@@ -35,12 +35,21 @@ type SearchFilter struct {
 
 // SearchCategory clusters search result layouts by category.
 type SearchCategory struct {
-	Layout MediaItemLayout `json:"layout"`
-	Filter *SearchFilter   `json:"filter,omitempty"`
+	Layout       MediaItemLayout `json:"layout"`
+	Filter       *SearchFilter   `json:"filter,omitempty"`
+	Continuation string          `json:"continuation,omitempty"`
+}
+
+// Chip represents a search filter chip from the chip cloud.
+type Chip struct {
+	Name   string     `json:"name"`
+	Params string     `json:"params,omitempty"`
+	Type   SearchType `json:"type,omitempty"`
 }
 
 // SearchResults contains the parsed search response contents.
 type SearchResults struct {
 	Categories          []SearchCategory `json:"categories"`
 	SuggestedCorrection string           `json:"suggested_correction,omitempty"`
+	Chips               []Chip           `json:"chips,omitempty"`
 }

@@ -336,11 +336,18 @@ func (r *MusicResponsiveListItemRenderer) ParseItem(hl string) (MediaItem, strin
 		}
 	}
 
-	if len(artists) == 0 && len(r.FlexColumns) > 1 && r.FlexColumns[1].MusicResponsiveListItemFlexColumnRenderer.Text != nil {
-		artists = append(artists, Artist{
-			ID:   "",
-			Name: r.FlexColumns[1].MusicResponsiveListItemFlexColumnRenderer.Text.FirstText(),
-		})
+	if len(r.FlexColumns) > 1 && r.FlexColumns[1].MusicResponsiveListItemFlexColumnRenderer.Text != nil {
+		name := r.FlexColumns[1].MusicResponsiveListItemFlexColumnRenderer.Text.FirstText()
+		if name != "" {
+			for i := range artists {
+				if artists[i].Name == "" {
+					artists[i].Name = name
+				}
+			}
+			if len(artists) == 0 {
+				artists = append(artists, Artist{Name: name})
+			}
+		}
 	}
 
 	var playlistSetVideoID string
@@ -786,6 +793,12 @@ func (c *MusicCardShelfRenderer) GetMediaItem() MediaItem {
 		}
 	}
 
+	if len(artists) == 0 && len(c.Subtitle.Runs) > 0 {
+		if text := c.Subtitle.FirstText(); text != "" {
+			artists = append(artists, Artist{Name: text})
+		}
+	}
+
 	thumbnailProvider := c.Thumbnail.ToThumbnailProvider()
 	switch it := item.(type) {
 	case *Song:
@@ -1068,7 +1081,7 @@ func (s YoutubeiShelf) GetMediaItems(hl string) []MediaItem {
 			}
 		}
 	} else if s.ItemSectionRenderer != nil {
-		items = s.ItemSectionRenderer.GetMediaItems()
+		items = s.ItemSectionRenderer.GetMediaItems(hl)
 	}
 	return items
 }
@@ -1102,11 +1115,33 @@ func (s YoutubeiShelf) GetMediaItemsAndSetIDs(hl string) []struct {
 			}
 		}
 	} else if s.ItemSectionRenderer != nil {
-		for _, item := range s.ItemSectionRenderer.GetMediaItems() {
-			results = append(results, struct {
-				Item  MediaItem
-				SetID string
-			}{Item: item, SetID: ""})
+		for _, c := range s.ItemSectionRenderer.Contents {
+			if c.MusicResponsiveListItemRenderer != nil {
+				if parsed, setID := c.MusicResponsiveListItemRenderer.ParseItem(hl); parsed != nil {
+					results = append(results, struct {
+						Item  MediaItem
+						SetID string
+					}{Item: parsed, SetID: setID})
+				}
+			}
+			if c.PlaylistVideoListRenderer != nil {
+				for _, item := range c.PlaylistVideoListRenderer.Contents {
+					if song := item.PlaylistVideoRenderer.GetSong(); song != nil {
+						results = append(results, struct {
+							Item  MediaItem
+							SetID string
+						}{Item: song, SetID: ""})
+					}
+				}
+			}
+			if c.VideoRenderer != nil {
+				if song := c.VideoRenderer.GetSong(); song != nil {
+					results = append(results, struct {
+						Item  MediaItem
+						SetID string
+					}{Item: song, SetID: ""})
+				}
+			}
 		}
 	}
 	return results
@@ -1117,9 +1152,14 @@ type ItemSectionRenderer struct {
 	Contents []ItemSectionRendererContent `json:"contents"`
 }
 
-func (r ItemSectionRenderer) GetMediaItems() []MediaItem {
+func (r ItemSectionRenderer) GetMediaItems(hl string) []MediaItem {
 	var items []MediaItem
 	for _, c := range r.Contents {
+		if c.MusicResponsiveListItemRenderer != nil {
+			if parsed, _ := c.MusicResponsiveListItemRenderer.ParseItem(hl); parsed != nil {
+				items = append(items, parsed)
+			}
+		}
 		if c.PlaylistVideoListRenderer != nil {
 			for _, item := range c.PlaylistVideoListRenderer.Contents {
 				if song := item.PlaylistVideoRenderer.GetSong(); song != nil {
@@ -1137,9 +1177,10 @@ func (r ItemSectionRenderer) GetMediaItems() []MediaItem {
 }
 
 type ItemSectionRendererContent struct {
-	DidYouMeanRenderer        *DidYouMeanRenderer        `json:"didYouMeanRenderer,omitempty"`
-	PlaylistVideoListRenderer *PlaylistVideoListRenderer `json:"playlistVideoListRenderer,omitempty"`
-	VideoRenderer             *VideoRenderer             `json:"videoRenderer,omitempty"`
+	DidYouMeanRenderer               *DidYouMeanRenderer               `json:"didYouMeanRenderer,omitempty"`
+	MusicResponsiveListItemRenderer  *MusicResponsiveListItemRenderer  `json:"musicResponsiveListItemRenderer,omitempty"`
+	PlaylistVideoListRenderer        *PlaylistVideoListRenderer        `json:"playlistVideoListRenderer,omitempty"`
+	VideoRenderer                    *VideoRenderer                    `json:"videoRenderer,omitempty"`
 }
 
 type DidYouMeanRenderer struct {

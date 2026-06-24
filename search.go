@@ -91,6 +91,19 @@ func (c *Client) Search(ctx context.Context, query string, params string, nonMus
 		}
 	}
 
+	var cleanChips []Chip
+	for _, ch := range chips {
+		if ch.ChipCloudChipRenderer.Text == nil {
+			continue
+		}
+		name := ch.ChipCloudChipRenderer.Text.FirstText()
+		params := ""
+		if ch.ChipCloudChipRenderer.NavigationEndpoint.SearchEndpoint != nil {
+			params = ch.ChipCloudChipRenderer.NavigationEndpoint.SearchEndpoint.Params
+		}
+		cleanChips = append(cleanChips, Chip{Name: name, Params: params})
+	}
+
 	var shelves []YoutubeiShelf
 	for _, renderer := range sectionListRenderers {
 		for _, shelf := range renderer.Contents {
@@ -105,39 +118,41 @@ func (c *Client) Search(ctx context.Context, query string, params string, nonMus
 	}
 
 	for i, category := range shelves {
+		var items []MediaItem
+		var titleText string
+		var viewMore *PageRef
+		var filter *SearchFilter
+		var continuation string
+
 		if card := category.MusicCardShelfRenderer; card != nil {
-			var titleText string
 			if card.Header.MusicCardShelfHeaderBasicRenderer != nil && card.Header.MusicCardShelfHeaderBasicRenderer.Title != nil {
 				titleText = card.Header.MusicCardShelfHeaderBasicRenderer.Title.FirstText()
 			}
-			categories = append(categories, SearchCategory{
-				Layout: MediaItemLayout{
-					Items: []MediaItem{card.GetMediaItem()},
-					Title: titleText,
-					Type:  LayoutTypeCard,
-				},
-			})
-			continue
-		}
-
-		if isr := category.ItemSectionRenderer; isr != nil {
-			categories = append(categories, SearchCategory{
-				Layout: MediaItemLayout{
-					Items: isr.GetMediaItems(),
-				},
-			})
-			continue
-		}
-
-		shelf := category.MusicShelfRenderer
-		if shelf == nil {
-			continue
-		}
-
-		var items []MediaItem
-		for _, item := range shelf.Contents {
-			if parsedItem, _ := item.ParseItem(c.hl); parsedItem != nil {
-				items = append(items, parsedItem)
+			items = []MediaItem{card.GetMediaItem()}
+		} else if isr := category.ItemSectionRenderer; isr != nil {
+			items = isr.GetMediaItems(c.hl)
+		} else if category.MusicCarouselShelfRenderer != nil {
+			items = category.GetMediaItems(c.hl)
+			titleText = category.Title()
+			header := category.GetHeader()
+			if header != nil {
+				if r := header.GetRenderer(); r != nil && r.Title != nil && len(r.Title.Runs) > 0 {
+					if ep := r.Title.Runs[0].NavigationEndpoint; ep != nil && ep.BrowseEndpoint != nil {
+						viewMore = &PageRef{BrowseID: ep.BrowseEndpoint.BrowseID}
+					}
+				}
+			}
+		} else if shelf := category.MusicShelfRenderer; shelf != nil {
+			for _, item := range shelf.Contents {
+				if parsedItem, _ := item.ParseItem(c.hl); parsedItem != nil {
+					items = append(items, parsedItem)
+				}
+			}
+			if shelf.Title != nil {
+				titleText = shelf.Title.FirstText()
+			}
+			if len(shelf.Continuations) > 0 {
+				continuation = shelf.Continuations[0].GetToken()
 			}
 		}
 
@@ -145,48 +160,37 @@ func (c *Client) Search(ctx context.Context, query string, params string, nonMus
 			continue
 		}
 
-		var searchParams string
 		if i > 0 && i-1 < len(chips) {
-			searchParams = chips[i-1].ChipCloudChipRenderer.NavigationEndpoint.SearchEndpoint.Params
-		}
-
-		var filter *SearchFilter
-		if searchParams != "" {
-			var searchType SearchType
-			first := items[0]
-			switch it := first.(type) {
-			case *Song:
-				if it.Type == SongTypeVideo {
-					searchType = SearchVideo
-				} else {
-					searchType = SearchSong
+			if params := chips[i-1].ChipCloudChipRenderer.NavigationEndpoint.SearchEndpoint.Params; params != "" {
+				var searchType SearchType
+				switch it := items[0].(type) {
+				case *Song:
+					if it.Type == SongTypeVideo {
+						searchType = SearchVideo
+					} else {
+						searchType = SearchSong
+					}
+				case *Artist:
+					searchType = SearchArtist
+				case *Playlist:
+					if it.Type == PlaylistTypeAlbum {
+						searchType = SearchAlbum
+					} else {
+						searchType = SearchPlaylist
+					}
 				}
-			case *Artist:
-				searchType = SearchArtist
-			case *Playlist:
-				if it.Type == PlaylistTypeAlbum {
-					searchType = SearchAlbum
-				} else {
-					searchType = SearchPlaylist
-				}
+				filter = &SearchFilter{Type: searchType, Params: params}
 			}
-			filter = &SearchFilter{
-				Type:   searchType,
-				Params: searchParams,
-			}
-		}
-
-		titleText := ""
-		if shelf.Title != nil {
-			titleText = shelf.Title.FirstText()
 		}
 
 		categories = append(categories, SearchCategory{
 			Layout: MediaItemLayout{
-				Items: items,
-				Title: titleText,
+				Items:    items,
+				Title:    titleText,
+				ViewMore: viewMore,
 			},
-			Filter: filter,
+			Filter:       filter,
+			Continuation: continuation,
 		})
 	}
 
@@ -197,5 +201,6 @@ func (c *Client) Search(ctx context.Context, query string, params string, nonMus
 	return &SearchResults{
 		Categories:          categories,
 		SuggestedCorrection: correctionSuggestion,
+		Chips:               cleanChips,
 	}, nil
 }
