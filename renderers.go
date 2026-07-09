@@ -144,7 +144,7 @@ func (be BrowseEndpoint) GetMediaItem() MediaItem {
 	}
 	switch t {
 	case "ARTIST":
-		return &Artist{ID: be.BrowseID}
+		return &Artist{ID: be.BrowseID, Type: "ARTIST"}
 	case "PLAYLIST":
 		return &Playlist{ID: CleanPlaylistID(be.BrowseID)}
 	case "SONG":
@@ -314,8 +314,11 @@ func (r *MusicResponsiveListItemRenderer) ParseItem(hl string) (MediaItem, strin
 				be := run.NavigationEndpoint.BrowseEndpoint
 				if be.GetMediaItemType() == "ARTIST" {
 					found := false
-					for _, a := range artists {
-						if a.ID == be.BrowseID {
+					for i := range artists {
+						if artists[i].ID == be.BrowseID {
+							if artists[i].Name == "" {
+								artists[i].Name = run.Text
+							}
 							found = true
 							break
 						}
@@ -336,16 +339,94 @@ func (r *MusicResponsiveListItemRenderer) ParseItem(hl string) (MediaItem, strin
 		}
 	}
 
+	// Fallback/refinement using grouped segments from the subtitle column
 	if len(r.FlexColumns) > 1 && r.FlexColumns[1].MusicResponsiveListItemFlexColumnRenderer.Text != nil {
-		name := r.FlexColumns[1].MusicResponsiveListItemFlexColumnRenderer.Text.FirstText()
-		if name != "" {
+		flexText := r.FlexColumns[1].MusicResponsiveListItemFlexColumnRenderer.Text
+
+		// Group runs into segments separated by " • "
+		var segments [][]TextRun
+		var currentSegment []TextRun
+		for _, run := range flexText.Runs {
+			trimmed := strings.TrimSpace(run.Text)
+			if trimmed == "•" {
+				if len(currentSegment) > 0 {
+					segments = append(segments, currentSegment)
+					currentSegment = nil
+				}
+			} else {
+				currentSegment = append(currentSegment, run)
+			}
+		}
+		if len(currentSegment) > 0 {
+			segments = append(segments, currentSegment)
+		}
+
+		// Find the artist segment (first non-typename segment)
+		var artistSegment []TextRun
+		typeNames := map[string]bool{
+			"song": true, "lagu": true, "video": true, "ep": true, "single": true,
+			"album": true, "artist": true, "artis": true, "playlist": true,
+			"station": true, "stasiun": true,
+		}
+
+		for _, seg := range segments {
+			var sb strings.Builder
+			for _, run := range seg {
+				sb.WriteString(run.Text)
+			}
+			segText := strings.TrimSpace(strings.ToLower(sb.String()))
+			if segText == "" {
+				continue
+			}
+			if typeNames[segText] {
+				continue
+			}
+			artistSegment = seg
+			break
+		}
+
+		if len(artistSegment) > 0 {
+			var sb strings.Builder
+			for _, run := range artistSegment {
+				sb.WriteString(run.Text)
+			}
+			artistText := sb.String()
+
+			// Fill in any empty artist names with the first artist name
+			firstArtistName := artistText
+			normalized := strings.ReplaceAll(artistText, " & ", ", ")
+			parts := strings.Split(normalized, ", ")
+			if len(parts) > 0 {
+				firstArtistName = strings.TrimSpace(parts[0])
+			}
+
 			for i := range artists {
 				if artists[i].Name == "" {
-					artists[i].Name = name
+					artists[i].Name = firstArtistName
 				}
 			}
+
+			// If no artists were parsed, split by separator and add them
 			if len(artists) == 0 {
-				artists = append(artists, Artist{Name: name})
+				for _, part := range parts {
+					part = strings.TrimSpace(part)
+					if part != "" {
+						artists = append(artists, Artist{Name: part})
+					}
+				}
+			}
+		} else {
+			// Ultimate fallback if no artist segment is identified
+			name := flexText.FirstText()
+			if name != "" {
+				for i := range artists {
+					if artists[i].Name == "" {
+						artists[i].Name = name
+					}
+				}
+				if len(artists) == 0 {
+					artists = append(artists, Artist{Name: name})
+				}
 			}
 		}
 	}
@@ -409,6 +490,7 @@ func (r *MusicResponsiveListItemRenderer) ParseItem(hl string) (MediaItem, strin
 				art = artists[0]
 			}
 			art.ID = browseID
+			art.Type = "ARTIST"
 			art.Name = title
 			art.Thumbnail = thumbnailProvider
 			return &art, playlistSetVideoID
@@ -510,6 +592,7 @@ func (r *MusicTwoRowItemRenderer) toMediaItem() MediaItem {
 		case "ARTIST":
 			return &Artist{
 				ID:        browseID,
+				Type:      "ARTIST",
 				Name:      titleText,
 				Thumbnail: thumbnailProvider,
 			}

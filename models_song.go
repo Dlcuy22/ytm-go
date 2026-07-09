@@ -66,6 +66,7 @@ func (s Song) GetThumbnailProvider() *ThumbnailProvider {
 // Artist represents a music artist or channel.
 type Artist struct {
 	ID                 string             `json:"id"`
+	Type               string             `json:"type,omitempty"`
 	Name               string             `json:"name,omitempty"`
 	Description        string             `json:"description,omitempty"`
 	Thumbnail          *ThumbnailProvider `json:"thumbnail,omitempty"`

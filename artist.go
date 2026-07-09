@@ -52,7 +52,8 @@ func (c *Client) LoadArtist(ctx context.Context, artistID string) (*Artist, erro
 
 func parseArtistResponse(artistID string, parsed *YoutubeiBrowseResponse, hl string) *Artist {
 	artist := &Artist{
-		ID: artistID,
+		ID:   artistID,
+		Type: "ARTIST",
 	}
 
 	headerRenderer := parsed.Header.GetRenderer()

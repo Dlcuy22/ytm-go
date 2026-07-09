@@ -212,7 +212,10 @@ func parsePlaylistResponse(playlistID string, parsed *YoutubeiBrowseResponse, hl
 		ID: playlistID,
 	}
 
-	headerRenderer := parsed.Header.GetRenderer()
+	var headerRenderer *HeaderRenderer
+	if parsed.Header != nil {
+		headerRenderer = parsed.Header.GetRenderer()
+	}
 	if headerRenderer != nil {
 		if headerRenderer.Title != nil {
 			playlist.Name = headerRenderer.Title.FirstText()
@@ -284,8 +287,10 @@ func parsePlaylistResponse(playlistID string, parsed *YoutubeiBrowseResponse, hl
 
 	var shelves []YoutubeiShelf
 	if parsed.Contents != nil {
-		tabs := parsed.Contents.SingleColumnBrowseResultsRenderer.Tabs
-		if len(tabs) == 0 && parsed.Contents.TwoColumnBrowseResultsRenderer != nil {
+		var tabs []Tab
+		if parsed.Contents.SingleColumnBrowseResultsRenderer != nil {
+			tabs = parsed.Contents.SingleColumnBrowseResultsRenderer.Tabs
+		} else if parsed.Contents.TwoColumnBrowseResultsRenderer != nil {
 			tabs = parsed.Contents.TwoColumnBrowseResultsRenderer.Tabs
 		}
 		if len(tabs) > 0 && tabs[0].TabRenderer.Content != nil && tabs[0].TabRenderer.Content.SectionListRenderer != nil {
