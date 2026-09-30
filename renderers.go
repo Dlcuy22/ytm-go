@@ -1400,6 +1400,7 @@ type SearchChip struct {
 type ContinuationContents struct {
 	SectionListContinuation        *SectionListRenderer `json:"sectionListContinuation,omitempty"`
 	MusicPlaylistShelfContinuation *MusicShelfRenderer  `json:"musicPlaylistShelfContinuation,omitempty"`
+	MusicShelfContinuation         *MusicShelfRenderer  `json:"musicShelfContinuation,omitempty"`
 }
 
 type OnResponseReceivedAction struct {
@@ -1612,6 +1613,41 @@ type TopLevelButton struct {
 
 type MenuItem struct {
 	MenuNavigationItemRenderer *MenuNavigationItemRenderer `json:"menuNavigationItemRenderer,omitempty"`
+	ToggleMenuServiceItemRenderer *ToggleMenuServiceItemRenderer `json:"toggleMenuServiceItemRenderer,omitempty"`
+}
+
+// ToggleMenuServiceItemRenderer is a menu entry that flips between two states,
+// such as library membership. The two texts name the actions, and the two
+// service endpoints carry the tokens that perform them.
+type ToggleMenuServiceItemRenderer struct {
+	DefaultText            TextRuns              `json:"defaultText"`
+	ToggledText            TextRuns              `json:"toggledText"`
+	DefaultServiceEndpoint ServiceEndpoint       `json:"defaultServiceEndpoint"`
+	ToggledServiceEndpoint ServiceEndpoint       `json:"toggledServiceEndpoint"`
+	IsToggled              bool                  `json:"isToggled,omitempty"`
+}
+
+// ServiceEndpoint is the command behind a menu entry. Only the feedback token
+// is modelled: the other commands (queue, share) need their own request shapes
+// and are not used by this package yet.
+type ServiceEndpoint struct {
+	FeedbackEndpoint *FeedbackEndpoint `json:"feedbackEndpoint,omitempty"`
+}
+
+// FeedbackEndpoint carries the opaque token a /feedback submission needs. The
+// token encodes the action, the target, and the account, so it cannot be
+// constructed locally and must come from a fresh response.
+type FeedbackEndpoint struct {
+	FeedbackToken string `json:"feedbackToken"`
+}
+
+// FeedbackToken returns the token, or an empty string when this endpoint is not
+// a feedback command.
+func (s ServiceEndpoint) FeedbackToken() string {
+	if s.FeedbackEndpoint == nil {
+		return ""
+	}
+	return s.FeedbackEndpoint.FeedbackToken
 }
 
 type MenuNavigationItemRenderer struct {

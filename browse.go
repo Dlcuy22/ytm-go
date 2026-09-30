@@ -35,10 +35,46 @@ GetSongFeed retrieves the structured feed layouts for home browse view.
           error: network or parsing error
 */
 func (c *Client) GetSongFeed(ctx context.Context, minRows int, params *string, continuation *string) (*FeedLoadResult, error) {
+	return c.getSongFeed(ctx, "FEmusic_home", minRows, params, continuation, c.auth != nil)
+}
+
+/*
+GetSongFeedWithBrowse retrieves a named browse feed, optionally as the signed-in
+account.
+
+The browse targets that matter for a music client are FEmusic_home (the home
+feed), FEmusic_explore, FEmusic_charts, FEmusic_new_releases_albums and
+FEmusic_moods_and_genres. Sending browseId is what makes the response a real
+home feed: without it the endpoint still answers, but with a generic anonymous
+selection rather than the account's own rows.
+
+authed controls whether the account cookie is sent. For FEmusic_home the
+difference is measurable: a signed-in request returns more rows and carousels
+than an anonymous one. Callers without credentials should pass false.
+
+    params:
+          ctx: execution context
+          browseID: browse target, e.g. "FEmusic_home"
+          minRows: minimum rows to load before stopping pagination
+          params: optional InnerTube chip search params
+          continuation: optional pagination ctoken
+          authed: send the account cookie
+    returns:
+          *FeedLoadResult: list of loaded layouts and continuation metadata
+          error: network or parsing error
+*/
+func (c *Client) GetSongFeedWithBrowse(ctx context.Context, browseID string, minRows int, params *string, continuation *string, authed bool) (*FeedLoadResult, error) {
+	return c.getSongFeed(ctx, browseID, minRows, params, continuation, authed)
+}
+
+func (c *Client) getSongFeed(ctx context.Context, browseID string, minRows int, params *string, continuation *string, authed bool) (*FeedLoadResult, error) {
 	hl := c.hl
 
 	performRequest := func(ctoken string) (*YoutubeiBrowseResponse, error) {
 		bodyParams := map[string]any{}
+		if browseID != "" {
+			bodyParams["browseId"] = browseID
+		}
 		if params != nil {
 			bodyParams["params"] = *params
 		}
@@ -49,7 +85,7 @@ func (c *Client) GetSongFeed(ctx context.Context, minRows int, params *string, c
 		}
 
 		var resp YoutubeiBrowseResponse
-		err := c.doInnerTube(ctx, path, GetContextWebRemix(c.hl), bodyParams, false, &resp)
+		err := c.doInnerTube(ctx, path, GetContextWebRemix(c.hl), bodyParams, authed, &resp)
 		if err != nil {
 			return nil, err
 		}

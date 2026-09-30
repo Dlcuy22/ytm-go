@@ -1,0 +1,6 @@
+// Keeps this experiment independent of the repository's go.work, which does
+// not list this module. Without it, `go` from here resolves the parent
+// workspace and fails with "directory prefix . does not contain modules".
+go 1.27
+
+use .

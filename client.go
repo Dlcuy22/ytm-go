@@ -149,9 +149,20 @@ func (c *Client) setHeaders(req *http.Request, clientCtx ClientContext, authed b
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Content-Type", "application/json")
 
-	// Use desktop/web client name and version headers to avoid InnerTube restrictions on mobile requests
-	req.Header.Set("X-YouTube-Client-Name", "67")
-	req.Header.Set("X-YouTube-Client-Version", "1.20251111.09.00")
+	// The client identity headers default to the desktop web client, which is
+	// what every catalogue endpoint uses. A context that names its own numeric
+	// client id overrides them, which playback profiles such as VISIONOS need
+	// to stay internally consistent.
+	clientID := "67"
+	clientVersion := "1.20251111.09.00"
+	if clientCtx.ClientID != "" {
+		clientID = clientCtx.ClientID
+	}
+	if clientCtx.ClientVersion != "" {
+		clientVersion = clientCtx.ClientVersion
+	}
+	req.Header.Set("X-YouTube-Client-Name", clientID)
+	req.Header.Set("X-YouTube-Client-Version", clientVersion)
 
 	req.Header.Set("X-Goog-AuthUser", "0")
 	if c.visitorID != "" {
@@ -165,8 +176,14 @@ func (c *Client) setHeaders(req *http.Request, clientCtx ClientContext, authed b
 	req.Header.Set("Origin", origin)
 	req.Header.Set("X-Origin", origin)
 
-	// Use desktop User-Agent to avoid bot-detection and streaming playback restrictions
-	req.Header.Set("User-Agent", YtmUserAgent)
+	// The user agent follows the impersonated client when it declares one, so a
+	// mobile profile is not paired with a desktop UA. The default stays the
+	// desktop string the catalogue endpoints were tuned against.
+	userAgent := YtmUserAgent
+	if clientCtx.UserAgent != "" {
+		userAgent = clientCtx.UserAgent
+	}
+	req.Header.Set("User-Agent", userAgent)
 
 	if authed && c.auth != nil {
 		req.Header.Set("Cookie", c.auth.Cookie)
