@@ -24,7 +24,7 @@ import (
 )
 
 // Version is the current version of the ytm-go library.
-const Version = "1.2.0"
+const Version = "1.2.1"
 
 // MediaItem represents a generic media item scraped from YouTube Music.
 type MediaItem interface {

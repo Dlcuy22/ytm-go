@@ -258,8 +258,15 @@ func (c *Client) GetStreamWithOptions(ctx context.Context, songID string, opts S
 	var resp playerResponse
 	// authed=false is deliberate: VISIONOS is a playback-only profile that does
 	// not accept a login, and sending the cookie would not help.
+	// contentCheckOk and racyCheckOk are the acknowledgement a browser sends
+	// when the viewer accepts a content advisory. Without them the endpoint
+	// answers CONTENT_CHECK_REQUIRED for every track that carries one, so a
+	// track that plays fine in a browser is refused here for no reason a
+	// listener can act on. Sending them is what the web client does.
 	err := c.doInnerTube(ctx, "player", clientCtx, map[string]any{
-		"videoId": songID,
+		"videoId":        songID,
+		"contentCheckOk": true,
+		"racyCheckOk":    true,
 	}, false, &resp)
 	if err != nil {
 		return nil, err
