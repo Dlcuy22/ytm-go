@@ -150,6 +150,13 @@ func (c *Client) SetVisitorID(id string) {
 	c.visitorID = id
 }
 
+// Auth returns the session the client was configured with, or nil when it is
+// running anonymously. It is the live pointer, so a caller can adjust the channel
+// on it; prefer AuthState.SetChannel over writing fields directly.
+func (c *Client) Auth() *AuthState {
+	return c.auth
+}
+
 /*
 SetHL overrides the client's locale language setting.
 
