@@ -127,14 +127,32 @@ func (c *Client) doInnerTube(ctx context.Context, path string, clientCtx ClientC
 		}
 		_ = json.Unmarshal(bodyBytes, &apiErr)
 
-		return &InnerTubeError{
+		err := &InnerTubeError{
 			ResponseCode: resp.StatusCode,
 			Body:         string(bodyBytes),
 			Parsed:       apiErr.Error,
 		}
+		if resp.StatusCode == http.StatusUnauthorized {
+			return fmt.Errorf("%w: %w", ErrSessionExpired, err)
+		}
+		return err
 	}
 
-	return json.NewDecoder(resp.Body).Decode(respBody)
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	// The viewer state is only in the body, so it is recorded here, while the raw
+	// bytes are still available.
+	if state := classifyAuthState(bodyBytes); state != authStateUnknown {
+		c.lastAuthState = state
+		if obs, ok := respBody.(authObserver); ok {
+			obs.setAuthState(state)
+		}
+	}
+
+	return json.Unmarshal(bodyBytes, respBody)
 }
 
 /*
@@ -164,7 +182,14 @@ func (c *Client) setHeaders(req *http.Request, clientCtx ClientContext, authed b
 	req.Header.Set("X-YouTube-Client-Name", clientID)
 	req.Header.Set("X-YouTube-Client-Version", clientVersion)
 
-	req.Header.Set("X-Goog-AuthUser", "0")
+	// One Google account can own several channels, and the server picks the
+	// channel from this index. A hardcoded "0" makes every brand channel behave
+	// like the first one.
+	authUser := "0"
+	if c.auth != nil && c.auth.AuthUser != "" {
+		authUser = c.auth.AuthUser
+	}
+	req.Header.Set("X-Goog-AuthUser", authUser)
 	if c.visitorID != "" {
 		req.Header.Set("X-Goog-EOM-Visitor-Id", c.visitorID)
 	}

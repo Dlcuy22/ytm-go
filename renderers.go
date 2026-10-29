@@ -760,8 +760,11 @@ func (i *YoutubeiShelfContentsItem) ParseItem(hl string) (MediaItem, string) {
 
 // GridRenderer represents visual grids.
 type GridRenderer struct {
-	Items  []YoutubeiShelfContentsItem `json:"items"`
-	Header *struct {
+	Items []YoutubeiShelfContentsItem `json:"items"`
+	// Continuations carries the paging token for grid-backed lists such as the
+	// library playlists, which page the grid rather than a music shelf.
+	Continuations []Continuation `json:"continuations,omitempty"`
+	Header        *struct {
 		GridHeaderRenderer HeaderRenderer `json:"gridHeaderRenderer"`
 	} `json:"header,omitempty"`
 }
@@ -1331,11 +1334,52 @@ func (vr VideoRenderer) GetSong() *Song {
 
 // YoutubeiBrowseResponse represents the complete page structure from browse endpoint.
 type YoutubeiBrowseResponse struct {
-	Contents                 *Contents                 `json:"contents,omitempty"`
-	ContinuationContents     *ContinuationContents     `json:"continuationContents,omitempty"`
-	Header                   *Header                   `json:"header,omitempty"`
-	Microformat              *Microformat              `json:"microformat,omitempty"`
+	ResponseContext           *ResponseContext           `json:"responseContext,omitempty"`
+	Contents                  *Contents                  `json:"contents,omitempty"`
+	ContinuationContents      *ContinuationContents      `json:"continuationContents,omitempty"`
+	Header                    *Header                    `json:"header,omitempty"`
+	Microformat               *Microformat               `json:"microformat,omitempty"`
 	OnResponseReceivedActions []OnResponseReceivedAction `json:"onResponseReceivedActions,omitempty"`
+
+	// authVerdict is filled by doInnerTube, which is the only place that sees the
+	// raw body and can therefore also spot a sign-in endpoint.
+	authVerdict authState
+}
+
+// setAuthState records the viewer verdict read from the raw body.
+func (br *YoutubeiBrowseResponse) setAuthState(state authState) {
+	br.authVerdict = state
+}
+
+// SignedIn reports whether this response was produced for a signed-in viewer.
+//
+// InnerTube answers a dead session with HTTP 200 and a page that offers a sign-in
+// button, so the status code carries nothing here. The verdict comes from the
+// body: the GFEEDBACK logged_in tracking parameter, or, when that is absent, the
+// presence of a sign-in endpoint.
+func (br *YoutubeiBrowseResponse) SignedIn() bool {
+	if br == nil {
+		return true
+	}
+	return br.authVerdict != authStateSignedOut
+}
+
+// ResponseContext is the metadata every InnerTube response carries. Only the
+// service tracking parameters are modelled, since they are the part callers read.
+type ResponseContext struct {
+	ServiceTrackingParams []ServiceTrackingParam `json:"serviceTrackingParams,omitempty"`
+}
+
+// ServiceTrackingParam is one tracking service and its key/value pairs.
+type ServiceTrackingParam struct {
+	Service string            `json:"service"`
+	Params  []TrackingParamKV `json:"params,omitempty"`
+}
+
+// TrackingParamKV is a single key/value tracking parameter.
+type TrackingParamKV struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 type Microformat struct {
@@ -1401,6 +1445,7 @@ type ContinuationContents struct {
 	SectionListContinuation        *SectionListRenderer `json:"sectionListContinuation,omitempty"`
 	MusicPlaylistShelfContinuation *MusicShelfRenderer  `json:"musicPlaylistShelfContinuation,omitempty"`
 	MusicShelfContinuation         *MusicShelfRenderer  `json:"musicShelfContinuation,omitempty"`
+	GridContinuation               *GridRenderer        `json:"gridContinuation,omitempty"`
 }
 
 type OnResponseReceivedAction struct {

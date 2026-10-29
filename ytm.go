@@ -21,6 +21,7 @@ package ytm
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -31,10 +32,29 @@ const (
 )
 
 var (
-	ErrLoginRequired        = errors.New("login required")
-	ErrContentNotAvailable  = errors.New("content not available")
-	ErrStreamNotFound       = errors.New("stream not found")
+	ErrLoginRequired       = errors.New("login required")
+	ErrContentNotAvailable = errors.New("content not available")
+	ErrStreamNotFound      = errors.New("stream not found")
+
+	// ErrSessionExpired means credentials were supplied but the server treated
+	// the request as signed out. It is a different failure from ErrLoginRequired:
+	// the caller did configure a session, the session is just no longer valid.
+	//
+	// The distinction matters because a dead session is not an HTTP error. The
+	// server answers 200 with a signed-out page, so this error is raised by
+	// inspecting the response body, not the status code.
+	ErrSessionExpired = errors.New("session expired")
+
+	// packageLogger is the fallback for the parse helpers that have no client to
+	// read a logger from. It is nil until SetLogger is called.
+	packageLogger *slog.Logger
 )
+
+// SetLogger installs a package-level logger for helpers that cannot reach a
+// Client. Callers that do have a client should prefer Client.SetLogger.
+func SetLogger(l *slog.Logger) {
+	packageLogger = l
+}
 
 // Client manages connection parameters to YouTube Music.
 type Client struct {
@@ -45,6 +65,38 @@ type Client struct {
 	auth        *AuthState
 	cache       *ItemCache
 	hl          string
+	logger      *slog.Logger
+
+	// lastAuthState is what the most recent response body said about the
+	// session. It is only meaningful for endpoints that echo the viewer state,
+	// and it stays unknown until such a response arrives.
+	lastAuthState authState
+}
+
+// SetLogger installs a logger for this client. A nil logger is ignored, so a
+// caller can pass a value that may be nil without checking.
+func (c *Client) SetLogger(l *slog.Logger) {
+	if l != nil {
+		c.logger = l
+	}
+}
+
+// log returns the client logger, or the package logger when the client has
+// none. It never returns nil, so call sites can log unconditionally.
+func (c *Client) log() *slog.Logger {
+	if c != nil && c.logger != nil {
+		return c.logger
+	}
+	if packageLogger != nil {
+		return packageLogger
+	}
+	return slog.New(discardHandler{})
+}
+
+// logPanic records a recovered parse panic. The call is a no-op unless a logger
+// was installed, because a library must not write to stderr on its own.
+func (c *Client) logPanic(op string, recovered any) {
+	logPanicWith(c.log(), op, recovered)
 }
 
 /*

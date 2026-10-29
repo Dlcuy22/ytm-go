@@ -34,6 +34,16 @@ type AuthState struct {
 	ChannelID     string    `json:"channel_id,omitempty"`
 	SAPISID       string    `json:"sapisid,omitempty"`
 	LastUpdated   time.Time `json:"last_updated"`
+
+	// AuthUser is the X-Goog-AuthUser index of the active channel. One Google
+	// account can own several channels, and the server picks the channel from
+	// this header, so "0" is only correct for the first one.
+	AuthUser string `json:"auth_user,omitempty"`
+
+	// DataSyncID identifies the active channel. It is bookkeeping only: sending
+	// it as user.onBehalfOfUser makes the server answer HTTP 500 INTERNAL for a
+	// plain channel-scoped session.
+	DataSyncID string `json:"data_sync_id,omitempty"`
 }
 
 /*
@@ -78,6 +88,7 @@ func NewAuthFromCookies(cookies []*http.Cookie) (*AuthState, error) {
 		Cookie:        cookieStr,
 		SAPISID:       sapisid,
 		Authorization: GenerateSAPISIDHash(sapisid),
+		AuthUser:      "0",
 		LastUpdated:   time.Now(),
 	}, nil
 }
@@ -114,8 +125,30 @@ func NewAuthFromCookieString(cookieStr string) (*AuthState, error) {
 		Cookie:        cookieStr,
 		SAPISID:       sapisid,
 		Authorization: GenerateSAPISIDHash(sapisid),
+		AuthUser:      "0",
 		LastUpdated:   time.Now(),
 	}, nil
+}
+
+// SetChannel points the session at one channel of a signed-in account.
+//
+// The cookies stay the same for every channel; only the account headers move.
+// Pass the empty string to leave a value untouched, which is what a caller does
+// when the account listing did not carry that particular token.
+//
+// pageID is the channel browse ID (the "UC…" form), dataSyncID is the channel's
+// datasync token, and authUser is the X-Goog-AuthUser index the account listing
+// reports for this channel.
+func (a *AuthState) SetChannel(pageID, dataSyncID, authUser string) {
+	if pageID != "" {
+		a.ChannelID = pageID
+	}
+	if dataSyncID != "" {
+		a.DataSyncID = dataSyncID
+	}
+	if authUser != "" {
+		a.AuthUser = authUser
+	}
 }
 
 /*
