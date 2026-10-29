@@ -12,6 +12,8 @@
 - **Playlists & Albums**: Read the complete tracklists and metadata for public playlists or official albums.
 - **Lyrics Sheet Loading**: Fetch plaintext lyrics using a song's lyrics browse ID.
 - **Radio Recommendations**: Build recommended radio mix tracklists dynamically.
+- **Signed-in Library**: Read the account's playlists, liked songs, albums and artists, with paging.
+- **Account & Channels**: List the channels a Google account owns, read its display name and email, and switch the active channel.
 
 ---
 
@@ -116,3 +118,58 @@ Retrieves detailed metadata and tracklistings for playlists or albums.
 ### `client.GetSongLyrics(ctx, lyricsBrowseID)`
 Retrieves the plaintext lyrics for a song.
 - **Returns**: `string, error`
+
+### Authentication
+
+`ytm-go` does not implement a login flow. It takes a `Cookie:` header captured
+from a signed-in browser and replays it:
+
+```go
+auth, err := ytm.NewAuthFromCookieString(cookieHeader)
+if err != nil {
+    return err // the header carries no SAPISID
+}
+client.SetAuth(auth)
+client.SetVisitorID(visitorData) // optional, saves a request on every start
+```
+
+The header must be the whole thing, not one field. A `SAPISID` on its own only
+seeds the `Authorization` hash; the session identity lives in `SID` or
+`__Secure-3PSID`. A header with `SAPISID` but neither of those returns a
+signed-out page for every request.
+
+`auth.SetChannel(pageID, dataSyncID, authUser)` points the session at one channel
+of an account that owns several. The cookies stay the same; only the account
+headers change. `DataSyncID` is bookkeeping and is never sent in a request.
+
+### `client.GetAccounts(ctx)`
+Lists the channels the signed-in Google account owns.
+- **Returns**: `[]Account, error`
+
+### `client.GetAccountInfo(ctx)`
+Reads the display name, email, channel handle and avatar of the signed-in account.
+- **Returns**: `*AccountInfo, error`
+
+### `client.GetLikedSongs(ctx)` / `client.GetLikedSongsContinuation(ctx, token)`
+Pages the account's liked songs.
+- **Returns**: `[]Song, *BuiltInContinuation, error`
+
+### `client.GetLibraryPlaylists(ctx)` / `client.GetLibraryPlaylistsContinuation(ctx, token)`
+Pages the account's playlists.
+- **Returns**: `[]Playlist, *BuiltInContinuation, error`
+
+### `client.GetLikedAlbumsContinuation(ctx, token)`
+Pages the account's liked albums. `GetLikedAlbums` loads the first page.
+- **Returns**: `[]Playlist, *BuiltInContinuation, error`
+
+### `client.GetLikedArtistsContinuation(ctx, token)`
+Pages the account's artists. `GetLikedArtists` loads the first page.
+- **Returns**: `[]Artist, *BuiltInContinuation, error`
+
+### `client.SignedIn()`
+Reports whether the most recent response was produced for a signed-in viewer.
+- **Returns**: `bool`
+
+A dead session is **not** an HTTP error: the server answers 200 with a signed-out
+page. The authed readers therefore return `ErrSessionExpired` rather than an empty
+slice, so a broken session is visible instead of looking like an empty library.

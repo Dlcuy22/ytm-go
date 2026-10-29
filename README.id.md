@@ -12,6 +12,8 @@
 - **Playlist & Album**: Membaca daftar lagu lengkap (tracklist) dari playlist publik maupun album resmi.
 - **Lirik Lagu**: Mengambil teks lirik lagu plaintext menggunakan ID lirik.
 - **Rekomendasi (Radio)**: Membangun daftar putar rekomendasi (radio) secara dinamis.
+- **Pustaka Akun**: Membaca playlist, lagu disukai, album dan artis milik akun, lengkap dengan paging.
+- **Akun & Channel**: Mendaftar channel milik satu akun Google, membaca nama dan email, serta berpindah channel aktif.
 
 ---
 
@@ -116,3 +118,59 @@ Memuat daftar tracklist dari sebuah playlist, album, atau radio feed.
 ### `client.GetSongLyrics(ctx, lyricsBrowseID)`
 Mengambil teks lirik (plaintext) dari track terkait menggunakan ID lirik.
 - **Returns**: `string, error`
+
+### Autentikasi
+
+`ytm-go` tidak menyediakan alur login. Library ini menerima header `Cookie:` hasil
+tangkap dari browser yang sudah login, lalu memutarnya ulang:
+
+```go
+auth, err := ytm.NewAuthFromCookieString(cookieHeader)
+if err != nil {
+    return err // header tidak membawa SAPISID
+}
+client.SetAuth(auth)
+client.SetVisitorID(visitorData) // opsional, menghemat satu request tiap start
+```
+
+Header yang dikirim harus utuh, bukan satu field saja. `SAPISID` sendirian hanya
+menjadi benih hash `Authorization`; identitas sesi ada di `SID` atau
+`__Secure-3PSID`. Header berisi `SAPISID` tanpa keduanya akan dijawab halaman
+signed-out untuk setiap request.
+
+`auth.SetChannel(pageID, dataSyncID, authUser)` mengarahkan sesi ke salah satu
+channel milik akun yang punya beberapa channel. Cookie tetap sama; hanya header
+akun yang berubah. `DataSyncID` hanya untuk pembukuan dan tidak pernah dikirim
+dalam request.
+
+### `client.GetAccounts(ctx)`
+Mendaftar channel milik akun Google yang sedang login.
+- **Returns**: `[]Account, error`
+
+### `client.GetAccountInfo(ctx)`
+Membaca nama tampilan, email, handle channel dan avatar akun yang sedang login.
+- **Returns**: `*AccountInfo, error`
+
+### `client.GetLikedSongs(ctx)` / `client.GetLikedSongsContinuation(ctx, token)`
+Memuat lagu disukai akun secara bertahap (paging).
+- **Returns**: `[]Song, *BuiltInContinuation, error`
+
+### `client.GetLibraryPlaylists(ctx)` / `client.GetLibraryPlaylistsContinuation(ctx, token)`
+Memuat playlist milik akun secara bertahap (paging).
+- **Returns**: `[]Playlist, *BuiltInContinuation, error`
+
+### `client.GetLikedAlbumsContinuation(ctx, token)`
+Memuat album disukai secara bertahap. `GetLikedAlbums` mengambil halaman pertama.
+- **Returns**: `[]Playlist, *BuiltInContinuation, error`
+
+### `client.GetLikedArtistsContinuation(ctx, token)`
+Memuat artis secara bertahap. `GetLikedArtists` mengambil halaman pertama.
+- **Returns**: `[]Artist, *BuiltInContinuation, error`
+
+### `client.SignedIn()`
+Menandakan apakah respons terakhir dibuat untuk penonton yang sudah login.
+- **Returns**: `bool`
+
+Sesi mati **bukan** error HTTP: server menjawab 200 dengan halaman signed-out.
+Karena itu reader ber-auth mengembalikan `ErrSessionExpired` dan bukan slice
+kosong, supaya sesi rusak terlihat dan tidak tampak seperti pustaka kosong.
