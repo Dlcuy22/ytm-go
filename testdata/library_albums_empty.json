@@ -1,0 +1,250 @@
+{
+  "responseContext": {
+    "serviceTrackingParams": [
+      {
+        "service": "GFEEDBACK",
+        "params": []
+      },
+      {
+        "service": "CSI",
+        "params": []
+      },
+      {
+        "service": "ECATCHER",
+        "params": []
+      }
+    ],
+    "responseId": "redacted"
+  },
+  "contents": {
+    "singleColumnBrowseResultsRenderer": {
+      "tabs": [
+        {
+          "tabRenderer": {
+            "endpoint": {
+              "clickTrackingParams": "redacted",
+              "commandExecutorCommand": {
+                "commands": [
+                  {
+                    "clickTrackingParams": "redacted",
+                    "musicLibraryPersistLaunchNavigationCommand": {
+                      "command": {
+                        "clickTrackingParams": "redacted",
+                        "browseEndpoint": {
+                          "browseId": "FEmusic_library_landing"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "clickTrackingParams": "redacted",
+                    "browseEndpoint": {
+                      "browseId": "FEmusic_library_landing",
+                      "browseEndpointContextSupportedConfigs": {
+                        "browseEndpointContextMusicConfig": {
+                          "pageType": "MUSIC_PAGE_TYPE_LIBRARY_CONTENT_LANDING_PAGE"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "title": "Library",
+            "selected": true,
+            "content": {
+              "sectionListRenderer": {
+                "contents": [
+                  {
+                    "itemSectionRenderer": {
+                      "contents": [
+                        {
+                          "messageRenderer": {
+                            "text": {
+                              "runs": [
+                                {
+                                  "text": "No albums yet"
+                                }
+                              ]
+                            },
+                            "icon": {
+                              "iconType": "ALBUM"
+                            },
+                            "trackingParams": "redacted",
+                            "subtext": {
+                              "messageSubtextRenderer": {
+                                "text": {
+                                  "runs": [
+                                    {
+                                      "text": "Albums you save to your library will show here"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            "style": {
+                              "value": "RENDER_STYLE_VERTICAL_CENTERED"
+                            }
+                          }
+                        }
+                      ],
+                      "trackingParams": "redacted"
+                    }
+                  }
+                ],
+                "trackingParams": "redacted",
+                "header": {
+                  "musicSideAlignedItemRenderer": {
+                    "startItems": [
+                      {
+                        "chipCloudRenderer": {
+                          "chips": [
+                            {
+                              "chipCloudChipRenderer": {
+                                "navigationEndpoint": {
+                                  "clickTrackingParams": "redacted",
+                                  "commandExecutorCommand": {
+                                    "commands": [
+                                      {
+                                        "clickTrackingParams": "redacted",
+                                        "browseEndpoint": {
+                                          "browseId": "FEmusic_library_landing"
+                                        }
+                                      },
+                                      {
+                                        "clickTrackingParams": "redacted",
+                                        "musicLibraryPersistLaunchNavigationCommand": {
+                                          "command": {
+                                            "clickTrackingParams": "redacted",
+                                            "browseEndpoint": {
+                                              "browseId": "FEmusic_library_landing"
+                                            }
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  }
+                                },
+                                "trackingParams": "redacted",
+                                "icon": {
+                                  "iconType": "CLOSE"
+                                },
+                                "accessibilityData": {
+                                  "accessibilityData": {
+                                    "label": "Clear filters"
+                                  }
+                                },
+                                "isSelected": true,
+                                "onDeselectedCommand": {
+                                  "clickTrackingParams": "redacted",
+                                  "commandExecutorCommand": {
+                                    "commands": [
+                                      {
+                                        "clickTrackingParams": "redacted",
+                                        "browseEndpoint": {
+                                          "browseId": "FEmusic_library_landing"
+                                        }
+                                      },
+                                      {
+                                        "clickTrackingParams": "redacted",
+                                        "musicLibraryPersistLaunchNavigationCommand": {
+                                          "command": {
+                                            "clickTrackingParams": "redacted",
+                                            "browseEndpoint": {
+                                              "browseId": "FEmusic_library_landing"
+                                            }
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  }
+                                },
+                                "uniqueId": "Clear filters"
+                              }
+                            },
+                            {
+                              "chipCloudChipRenderer": {
+                                "text": {
+                                  "runs": [
+                                    {
+                                      "text": "Albums"
+                                    }
+                                  ]
+                                },
+                                "navigationEndpoint": {
+                                  "clickTrackingParams": "redacted",
+                                  "commandExecutorCommand": {
+                                    "commands": [
+                                      {
+                                        "clickTrackingParams": "redacted",
+                                        "browseEndpoint": {
+                                          "browseId": "FEmusic_liked_albums"
+                                        }
+                                      },
+                                      {
+                                        "clickTrackingParams": "redacted",
+                                        "musicLibraryPersistLaunchNavigationCommand": {
+                                          "command": {
+                                            "clickTrackingParams": "redacted",
+                                            "browseEndpoint": {
+                                              "browseId": "FEmusic_liked_albums"
+                                            }
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  }
+                                },
+                                "trackingParams": "redacted",
+                                "accessibilityData": {
+                                  "accessibilityData": {
+                                    "label": "Show albums"
+                                  }
+                                },
+                                "isSelected": true,
+                                "onDeselectedCommand": {
+                                  "clickTrackingParams": "redacted",
+                                  "commandExecutorCommand": {
+                                    "commands": [
+                                      {
+                                        "clickTrackingParams": "redacted",
+                                        "browseEndpoint": {
+                                          "browseId": "FEmusic_library_landing"
+                                        }
+                                      },
+                                      {
+                                        "clickTrackingParams": "redacted",
+                                        "musicLibraryPersistLaunchNavigationCommand": {
+                                          "command": {
+                                            "clickTrackingParams": "redacted",
+                                            "browseEndpoint": {
+                                              "browseId": "FEmusic_library_landing"
+                                            }
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  }
+                                },
+                                "uniqueId": "Albums"
+                              }
+                            }
+                          ],
+                          "trackingParams": "redacted"
+                        }
+                      }
+                    ],
+                    "trackingParams": "redacted"
+                  }
+                }
+              }
+            },
+            "tabIdentifier": "FEmusic_library_landing",
+            "trackingParams": "redacted"
+          }
+        }
+      ]
+    }
+  },
+  "trackingParams": "redacted"
+}

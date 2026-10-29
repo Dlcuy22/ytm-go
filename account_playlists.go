@@ -106,56 +106,16 @@ func (c *Client) GetAccountPlaylists(ctx context.Context) ([]Playlist, error) {
 
 	var resp YoutubeiBrowseResponse
 	err := c.doInnerTube(ctx, "browse", GetContextWebRemix(c.hl), map[string]any{
-		"browseId": "FEmusic_liked_playlists",
+		"browseId": libraryPlaylistsBrowseID,
 	}, true, &resp)
 	if err != nil {
 		return nil, err
 	}
-
-	var playlists []Playlist
-	var shelves []YoutubeiShelf
-	if resp.Contents != nil {
-		tabs := resp.Contents.SingleColumnBrowseResultsRenderer.Tabs
-		if len(tabs) == 0 && resp.Contents.TwoColumnBrowseResultsRenderer != nil {
-			tabs = resp.Contents.TwoColumnBrowseResultsRenderer.Tabs
-		}
-		if len(tabs) > 0 && tabs[0].TabRenderer.Content != nil && tabs[0].TabRenderer.Content.SectionListRenderer != nil {
-			shelves = append(shelves, tabs[0].TabRenderer.Content.SectionListRenderer.Contents...)
-		}
+	if !c.SignedIn() {
+		return nil, ErrSessionExpired
 	}
 
-	for _, shelf := range shelves {
-		if shelf.GridRenderer == nil {
-			continue
-		}
-		for _, item := range shelf.GridRenderer.Items {
-			if item.MusicTwoRowItemRenderer == nil || item.MusicTwoRowItemRenderer.NavigationEndpoint.BrowseEndpoint == nil {
-				continue
-			}
-
-			parsed, _ := item.ParseItem(c.hl)
-			if pl, ok := parsed.(*Playlist); ok {
-				playlist := *pl
-
-				isOwned := playlist.ID == "VLLM" || playlist.ID == "LM"
-				if !isOwned && item.MusicTwoRowItemRenderer.Menu != nil {
-					for _, mi := range item.MusicTwoRowItemRenderer.Menu.MenuRenderer.Items {
-						if mi.MenuNavigationItemRenderer != nil && mi.MenuNavigationItemRenderer.Icon.IconType == "DELETE" {
-							isOwned = true
-							break
-						}
-					}
-				}
-				if isOwned && c.auth != nil {
-					playlist.OwnerID = c.auth.ChannelID
-				}
-
-				playlists = append(playlists, playlist)
-			}
-		}
-	}
-
-	return playlists, nil
+	return parseGridPlaylists(resp.libraryShelves(), c.hl, c.auth), nil
 }
 
 /*

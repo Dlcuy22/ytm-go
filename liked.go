@@ -19,6 +19,7 @@ package ytm
 
 import (
 	"context"
+	"fmt"
 	"strings"
 )
 
@@ -38,37 +39,19 @@ func (c *Client) GetLikedAlbums(ctx context.Context) ([]Playlist, error) {
 
 	var resp YoutubeiBrowseResponse
 	err := c.doInnerTube(ctx, "browse", GetContextWebRemix(c.hl), map[string]any{
-		"browseId": "FEmusic_liked_albums",
+		"browseId": libraryAlbumsBrowseID,
 	}, true, &resp)
 	if err != nil {
 		return nil, err
 	}
-
-	var playlists []Playlist
-	var shelves []YoutubeiShelf
-	if resp.Contents != nil {
-		tabs := resp.Contents.SingleColumnBrowseResultsRenderer.Tabs
-		if len(tabs) == 0 && resp.Contents.TwoColumnBrowseResultsRenderer != nil {
-			tabs = resp.Contents.TwoColumnBrowseResultsRenderer.Tabs
-		}
-		if len(tabs) > 0 && tabs[0].TabRenderer.Content != nil && tabs[0].TabRenderer.Content.SectionListRenderer != nil {
-			shelves = append(shelves, tabs[0].TabRenderer.Content.SectionListRenderer.Contents...)
-		}
+	if !c.SignedIn() {
+		return nil, ErrSessionExpired
 	}
 
-	for _, shelf := range shelves {
-		if shelf.GridRenderer == nil {
-			continue
-		}
-		for _, item := range shelf.GridRenderer.Items {
-			parsed, _ := item.ParseItem(c.hl)
-			if pl, ok := parsed.(*Playlist); ok {
-				playlists = append(playlists, *pl)
-			}
-		}
-	}
-
-	return playlists, nil
+	// The page is grid-backed when it has albums and carries an item section with
+	// a "No albums yet" message when it does not. Both shapes are tolerated here;
+	// the second one simply yields nothing.
+	return parseGridPlaylists(resp.libraryShelves(), c.hl, c.auth), nil
 }
 
 /*
@@ -92,36 +75,71 @@ func (c *Client) GetLikedArtists(ctx context.Context) ([]Artist, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	var artists []Artist
-	var shelves []YoutubeiShelf
-	if resp.Contents != nil {
-		tabs := resp.Contents.SingleColumnBrowseResultsRenderer.Tabs
-		if len(tabs) == 0 && resp.Contents.TwoColumnBrowseResultsRenderer != nil {
-			tabs = resp.Contents.TwoColumnBrowseResultsRenderer.Tabs
-		}
-		if len(tabs) > 0 && tabs[0].TabRenderer.Content != nil && tabs[0].TabRenderer.Content.SectionListRenderer != nil {
-			shelves = append(shelves, tabs[0].TabRenderer.Content.SectionListRenderer.Contents...)
-		}
+	if !c.SignedIn() {
+		return nil, ErrSessionExpired
 	}
 
+	return parseLibraryArtists(resp.libraryShelves(), c.hl), nil
+}
+
+/*
+GetLikedArtistsContinuation loads the next page of the account's artists.
+
+	params:
+	      ctx: execution context
+	      token: continuation token from a previous page
+	returns:
+	      []Artist: the next page
+	      *BuiltInContinuation: following page token, or nil on the last page
+	      error: network, parsing, or ErrSessionExpired
+*/
+func (c *Client) GetLikedArtistsContinuation(ctx context.Context, token string) ([]Artist, *BuiltInContinuation, error) {
+	if err := requireAuth(c.auth); err != nil {
+		return nil, nil, err
+	}
+	if token == "" {
+		return nil, nil, fmt.Errorf("ytm: continuation requires a token")
+	}
+
+	var resp YoutubeiBrowseResponse
+	if err := c.doInnerTube(ctx, "browse", GetContextWebRemix(c.hl), map[string]any{
+		"ctoken":       token,
+		"continuation": token,
+	}, true, &resp); err != nil {
+		return nil, nil, err
+	}
+
+	items, next := resp.continuationItems()
+	return parseArtistsFromItems(items, c.hl), next, nil
+}
+
+// parseLibraryArtists pulls Artist values out of music shelves.
+func parseLibraryArtists(shelves []YoutubeiShelf, hl string) []Artist {
+	var artists []Artist
 	for _, shelf := range shelves {
 		if shelf.MusicShelfRenderer == nil {
 			continue
 		}
-		for _, item := range shelf.MusicShelfRenderer.Contents {
-			parsed, _ := item.ParseItem(c.hl)
-			if art, ok := parsed.(*Artist); ok {
-				artist := *art
-				if strings.HasPrefix(artist.ID, "MPLA") {
-					artist.ID = artist.ID[4:]
-				}
-				artists = append(artists, artist)
-			}
-		}
+		artists = append(artists, parseArtistsFromItems(shelf.MusicShelfRenderer.Contents, hl)...)
 	}
+	return artists
+}
 
-	return artists, nil
+// parseArtistsFromItems converts rows into artists, stripping the MPLA prefix
+// the library adds to artist IDs.
+func parseArtistsFromItems(items []YoutubeiShelfContentsItem, hl string) []Artist {
+	var artists []Artist
+	for _, item := range items {
+		parsed, _ := item.ParseItem(hl)
+		art, ok := parsed.(*Artist)
+		if !ok {
+			continue
+		}
+		artist := *art
+		artist.ID = strings.TrimPrefix(artist.ID, "MPLA")
+		artists = append(artists, artist)
+	}
+	return artists
 }
 
 /*
