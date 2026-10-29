@@ -103,7 +103,11 @@ func (c *Client) GetRadioBuilderArtists(ctx context.Context) ([]RadioBuilderArti
 		return nil, err
 	}
 
-	defer func() { recover() }()
+	defer func() {
+		if r := recover(); r != nil {
+			c.logPanic("GetRadioBuilderArtists", r)
+		}
+	}()
 	seedItems := resp.Contents.SingleColumnBrowseResultsRenderer.Tabs[0].TabRenderer.Content.SectionListRenderer.Contents[0].ItemSectionRenderer.Contents[0].ElementRenderer.NewElement.Type.ComponentType.Model.MusicRadioBuilderModel.SeedItems
 	mutations := resp.FrameworkUpdates.EntityBatchUpdate.Mutations
 

@@ -64,7 +64,7 @@ func (c *Client) Search(ctx context.Context, query string, params string, nonMus
 		} `json:"contents"`
 	}
 
-	err := c.doInnerTube(ctx, "search", clientCtx, bodyParams, false, &parsed)
+	err := c.doInnerTube(ctx, "search", clientCtx, bodyParams, c.auth != nil, &parsed)
 	if err != nil {
 		return nil, err
 	}

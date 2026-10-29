@@ -137,12 +137,16 @@ func (c *Client) GetSongRadio(ctx context.Context, songID string, continuation *
 
 	if continuation == nil {
 		var resp YoutubeiNextResponse
-		err := c.doInnerTube(ctx, "next", GetContextWebRemix(c.hl), bodyParams, false, &resp)
+		err := c.doInnerTube(ctx, "next", GetContextWebRemix(c.hl), bodyParams, c.auth != nil, &resp)
 		if err != nil {
 			return nil, err
 		}
 
-		defer func() { recover() }()
+		defer func() {
+			if r := recover(); r != nil {
+				c.logPanic("GetSongRadio", r)
+			}
+		}()
 		renderer := resp.Contents.SingleColumnMusicWatchNextResultsRenderer.TabbedRenderer.WatchNextTabbedResultsRenderer.Tabs[0].TabRenderer.Content.MusicQueueRenderer
 		if renderer.Content != nil {
 			radioContents = renderer.Content.PlaylistPanelRenderer.Contents
@@ -162,7 +166,7 @@ func (c *Client) GetSongRadio(ctx context.Context, songID string, continuation *
 		}
 	} else {
 		var resp YoutubeiNextContinuationResponse
-		err := c.doInnerTube(ctx, "next", GetContextWebRemix(c.hl), bodyParams, false, &resp)
+		err := c.doInnerTube(ctx, "next", GetContextWebRemix(c.hl), bodyParams, c.auth != nil, &resp)
 		if err != nil {
 			return nil, err
 		}

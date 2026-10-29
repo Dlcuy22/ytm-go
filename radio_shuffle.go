@@ -57,7 +57,11 @@ func (c *Client) GetArtistShuffle(ctx context.Context, artistID string, continua
 		return nil, err
 	}
 
-	defer func() { recover() }()
+	defer func() {
+		if r := recover(); r != nil {
+			c.logPanic("GetArtistShuffle", r)
+		}
+	}()
 	tab := resp.Contents.SingleColumnBrowseResultsRenderer.Tabs[0]
 	shelf := tab.TabRenderer.Content.SectionListRenderer.Contents[0].MusicPlaylistShelfRenderer
 

@@ -101,7 +101,11 @@ func (c *Client) GetSongLiked(ctx context.Context, songID string) (SongLikedStat
 		return SongLikedStatusNeutral, err
 	}
 
-	defer func() { recover() }()
+	defer func() {
+		if r := recover(); r != nil {
+			c.logPanic("GetSongLiked", r)
+		}
+	}()
 	if resp.PlayerOverlays != nil && resp.PlayerOverlays.PlayerOverlayRenderer != nil {
 		for _, action := range resp.PlayerOverlays.PlayerOverlayRenderer.Actions {
 			if action.LikeButtonRenderer != nil {

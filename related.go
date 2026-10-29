@@ -60,7 +60,7 @@ func (c *Client) GetSongRelated(ctx context.Context, songID string) ([]RelatedGr
 
 	err = c.doInnerTube(ctx, "browse", GetContextWebRemix(c.hl), map[string]any{
 		"browseId": song.RelatedBrowseID,
-	}, false, &resp)
+	}, c.auth != nil, &resp)
 	if err != nil {
 		return nil, err
 	}

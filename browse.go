@@ -148,7 +148,11 @@ func (c *Client) GetGenericFeedViewMore(ctx context.Context, browseID string) ([
 		return nil, err
 	}
 
-	defer func() { recover() }()
+	defer func() {
+		if r := recover(); r != nil {
+			c.logPanic("GetGenericFeedViewMore", r)
+		}
+	}()
 	shelves := resp.GetShelves(false)
 	if len(shelves) > 0 {
 		return shelves[0].GetMediaItems(c.hl), nil

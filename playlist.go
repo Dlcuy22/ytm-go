@@ -20,6 +20,7 @@ package ytm
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 	"strings"
 )
@@ -85,7 +86,7 @@ func (c *Client) LoadPlaylist(ctx context.Context, playlistID string, continuati
 			ctxMobile = GetContextWeb(c.hl)
 		}
 
-		err := c.doInnerTube(ctx, "browse", ctxMobile, bodyParams, false, &resp)
+		err := c.doInnerTube(ctx, "browse", ctxMobile, bodyParams, c.auth != nil, &resp)
 		if err != nil {
 			return nil, err
 		}
@@ -109,7 +110,7 @@ func (c *Client) LoadPlaylist(ctx context.Context, playlistID string, continuati
 		}
 	}
 
-	initialPlaylist := parsePlaylistResponse(playlistID, respData, c.hl, false)
+	initialPlaylist := parsePlaylistResponse(c.log(), playlistID, respData, c.hl, false)
 	if initialPlaylist != nil && initialPlaylist.Name != "" {
 		c.cache.StorePlaylist(initialPlaylist)
 		return initialPlaylist, nil
@@ -128,12 +129,12 @@ func (c *Client) LoadPlaylist(ctx context.Context, playlistID string, continuati
 		ctxMobile = GetContextWeb(c.hl)
 	}
 
-	err := c.doInnerTube(ctx, "browse", ctxMobile, bodyParams, false, &resp)
+	err := c.doInnerTube(ctx, "browse", ctxMobile, bodyParams, c.auth != nil, &resp)
 	if err != nil {
 		return nil, err
 	}
 
-	playlist := parsePlaylistResponse(playlistID, &resp, c.hl, false)
+	playlist := parsePlaylistResponse(c.log(), playlistID, &resp, c.hl, false)
 	if playlist != nil {
 		playlist.PlaylistURL = loadedPlaylistURL
 		emptyPrefix := "https://www.gstatic.com/youtube/media/ytm/images/pbg/playlist-empty-state"
@@ -153,13 +154,21 @@ func formatBrowseID(id string) string {
 	return id
 }
 
-func parsePlaylistResponse(playlistID string, parsed *YoutubeiBrowseResponse, hl string, isRadio bool) *Playlist {
+func parsePlaylistResponse(log *slog.Logger, playlistID string, parsed *YoutubeiBrowseResponse, hl string, isRadio bool) *Playlist {
 	if parsed == nil {
 		return nil
 	}
 
+	// The radio layout indexes renderers a plain playlist does not carry, so a
+	// shape change panics instead of returning nothing. Recover in both modes: a
+	// crash in the caller is worse than an empty playlist plus a log line.
+	defer func() {
+		if r := recover(); r != nil {
+			logPanicWith(log, "parsePlaylistResponse", r)
+		}
+	}()
+
 	if isRadio {
-		defer func() { recover() }()
 		tab := parsed.Contents.SingleColumnBrowseResultsRenderer.Tabs[0]
 		shelf := tab.TabRenderer.Content.SectionListRenderer.Contents[0].MusicPlaylistShelfRenderer
 

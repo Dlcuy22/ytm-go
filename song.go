@@ -19,6 +19,7 @@ package ytm
 import (
 	"context"
 	"fmt"
+	"log/slog"
 )
 
 /*
@@ -42,7 +43,7 @@ func (c *Client) LoadSong(ctx context.Context, songID string) (*Song, error) {
 	}, false, &nextResp)
 
 	if err == nil {
-		if song := parseSongResponse(songID, &nextResp); song != nil {
+		if song := parseSongResponse(c.log(), songID, &nextResp); song != nil {
 			c.cache.StoreSong(song)
 			return song, nil
 		}
@@ -77,8 +78,12 @@ func (c *Client) LoadSong(ctx context.Context, songID string) (*Song, error) {
 	return song, nil
 }
 
-func parseSongResponse(songID string, nextResp *YoutubeiNextResponse) *Song {
-	defer func() { recover() }()
+func parseSongResponse(log *slog.Logger, songID string, nextResp *YoutubeiNextResponse) *Song {
+	defer func() {
+		if r := recover(); r != nil {
+			logPanicWith(log, "parseSongResponse", r)
+		}
+	}()
 
 	tabs := nextResp.Contents.SingleColumnMusicWatchNextResultsRenderer.TabbedRenderer.WatchNextTabbedResultsRenderer.Tabs
 	if len(tabs) == 0 {

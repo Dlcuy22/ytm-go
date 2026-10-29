@@ -54,7 +54,11 @@ func (c *Client) GetSongLyrics(ctx context.Context, lyricsID string) (string, er
 		return "", err
 	}
 
-	defer func() { recover() }()
+	defer func() {
+		if r := recover(); r != nil {
+			c.logPanic("GetSongLyrics", r)
+		}
+	}()
 	if resp.Contents.SectionListRenderer != nil && len(resp.Contents.SectionListRenderer.Contents) > 0 {
 		shelf := resp.Contents.SectionListRenderer.Contents[0].MusicDescriptionShelfRenderer
 		if shelf != nil {
