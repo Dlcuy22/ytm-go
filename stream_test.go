@@ -140,6 +140,162 @@ func TestToStreamFormatRejectsVideo(t *testing.T) {
 	}
 }
 
+// TestToVideoFormatKeepsAdaptiveRenditions checks that an adaptive video track
+// is reported with its dimensions and is not marked muxed.
+func TestToVideoFormatKeepsAdaptiveRenditions(t *testing.T) {
+	got, ok := toVideoFormat(playerFormat{
+		Itag:         136,
+		URL:          "https://rr1---sn-x.googlevideo.com/videoplayback?expire=1790777639&itag=136",
+		MimeType:     `video/mp4; codecs="avc1.4D401F"`,
+		Width:        960,
+		Height:       720,
+		Fps:          24,
+		QualityLabel: "720p",
+		Bitrate:      1373342,
+	}, false)
+	if !ok {
+		t.Fatal("an adaptive video format must be returned")
+	}
+	if got.Height != 720 || got.Width != 960 || got.Fps != 24 {
+		t.Errorf("dimensions not mapped: %dx%d %dfps", got.Width, got.Height, got.Fps)
+	}
+	if got.QualityLabel != "720p" {
+		t.Errorf("quality label = %q, want 720p", got.QualityLabel)
+	}
+	if got.Codec != "avc1" {
+		t.Errorf("codec = %q, want avc1", got.Codec)
+	}
+	if got.Muxed {
+		t.Error("an adaptive track carries no audio and must not be muxed")
+	}
+	if got.ExpiresAt.IsZero() {
+		t.Error("expiry was not read from the URL")
+	}
+}
+
+// TestToVideoFormatRejectsAudio checks that an audio-only entry is not offered
+// as a video rendition.
+func TestToVideoFormatRejectsAudio(t *testing.T) {
+	if _, ok := toVideoFormat(playerFormat{
+		Itag: 251, MimeType: `audio/webm; codecs="opus"`, URL: "https://example",
+	}, false); ok {
+		t.Error("an audio format must not be returned as video")
+	}
+}
+
+// TestToVideoFormatRejectsCipher is the video-side counterpart of the audio
+// cipher test.
+func TestToVideoFormatRejectsCipher(t *testing.T) {
+	if _, ok := toVideoFormat(playerFormat{
+		Itag: 137, MimeType: "video/mp4", Width: 1920, Height: 1080,
+		SignatureCipher: "url=https%3A%2F%2Fexample&s=abc",
+	}, false); ok {
+		t.Error("a ciphered video format must not be returned as playable")
+	}
+}
+
+// TestSelectVideoFormatRanksByHeight checks the quality order and that the
+// caller's slice is left alone.
+func TestSelectVideoFormatRanksByHeight(t *testing.T) {
+	in := []VideoFormat{
+		{Itag: 134, Height: 360, Fps: 24, Bitrate: 475000},
+		{Itag: 136, Height: 720, Fps: 24, Bitrate: 1373000},
+		{Itag: 137, Height: 1080, Fps: 30, Bitrate: 4000000},
+	}
+	firstBefore := in[0].Itag
+	got := selectVideoFormat(in, StreamOptions{Video: true})
+	if got[0].Itag != 137 {
+		t.Errorf("expected the tallest rendition first, got itag %d", got[0].Itag)
+	}
+	if in[0].Itag != firstBefore {
+		t.Error("input slice was reordered")
+	}
+}
+
+// TestSelectVideoFormatHonoursMaxHeight checks the cap and its fallback.
+func TestSelectVideoFormatHonoursMaxHeight(t *testing.T) {
+	in := []VideoFormat{
+		{Itag: 137, Height: 1080},
+		{Itag: 136, Height: 720},
+		{Itag: 134, Height: 360},
+	}
+	got := selectVideoFormat(in, StreamOptions{Video: true, MaxHeight: 720})
+	if len(got) != 2 || got[0].Itag != 136 {
+		t.Errorf("cap 720 should keep 720 and 360, got %d entries starting at %d", len(got), got[0].Itag)
+	}
+
+	// A cap below every rendition must not empty the list.
+	got = selectVideoFormat(in, StreamOptions{Video: true, MaxHeight: 100})
+	if len(got) != 3 {
+		t.Errorf("an impossible cap must be ignored, got %d entries", len(got))
+	}
+}
+
+// TestAudioForPairsAVideoWithItsAudioTrack checks that a video-only rendition
+// reports the audio it needs, and that a muxed one reports none.
+func TestAudioForPairsAVideoWithItsAudioTrack(t *testing.T) {
+	s := &Streams{
+		Formats:      []StreamFormat{{Itag: 251, Codec: CodecOpus}},
+		VideoFormats: []VideoFormat{{Itag: 136, Height: 720}},
+	}
+
+	audio, ok := s.AudioFor(s.VideoFormats[0])
+	if !ok || audio.Itag != 251 {
+		t.Errorf("adaptive video should pair with audio 251, got %d (ok=%v)", audio.Itag, ok)
+	}
+
+	if _, ok := s.AudioFor(VideoFormat{Itag: 18, Muxed: true}); ok {
+		t.Error("a muxed rendition carries its own audio and must not report a pair")
+	}
+}
+
+// TestAudioForWithoutAudio checks the degenerate case: video resolved, audio
+// absent, so there is nothing to pair.
+func TestAudioForWithoutAudio(t *testing.T) {
+	s := &Streams{VideoFormats: []VideoFormat{{Itag: 136}}}
+	if _, ok := s.AudioFor(s.VideoFormats[0]); ok {
+		t.Error("no audio format means no pair")
+	}
+}
+
+// TestSelectVideoFormatPrefersTheRequestedCodec checks that asking for H264
+// outranks a taller VP9 rendition, which is what makes hardware decoding
+// possible on GPUs without a VP9 decoder.
+func TestSelectVideoFormatPrefersTheRequestedCodec(t *testing.T) {
+	in := []VideoFormat{
+		{Itag: 313, Codec: "vp9", Height: 2160, Bitrate: 13337000},
+		{Itag: 137, Codec: "avc1", Height: 1080, Bitrate: 3253000},
+		{Itag: 248, Codec: "vp9", Height: 1080, Bitrate: 1902000},
+	}
+
+	got := selectVideoFormat(in, StreamOptions{Video: true, VideoCodec: VideoCodecH264})
+	if got[0].Codec != "avc1" {
+		t.Errorf("H264 preference should win, got %s", got[0].Codec)
+	}
+	if got[0].Height != 1080 {
+		t.Errorf("expected the best H264 rendition, got %dp", got[0].Height)
+	}
+
+	// Auto keeps resolution first, so the tallest rendition still wins.
+	auto := selectVideoFormat(in, StreamOptions{Video: true})
+	if auto[0].Height != 2160 {
+		t.Errorf("auto should prefer the tallest rendition, got %dp", auto[0].Height)
+	}
+}
+
+// TestSelectVideoFormatFallsBackWhenCodecIsAbsent checks that a codec the
+// endpoint did not offer still returns something playable.
+func TestSelectVideoFormatFallsBackWhenCodecIsAbsent(t *testing.T) {
+	in := []VideoFormat{
+		{Itag: 248, Codec: "vp9", Height: 1080},
+		{Itag: 247, Codec: "vp9", Height: 720},
+	}
+	got := selectVideoFormat(in, StreamOptions{Video: true, VideoCodec: VideoCodecH264})
+	if len(got) != 2 || got[0].Codec != "vp9" {
+		t.Errorf("a missing codec must fall back, got %d entries starting with %q", len(got), got[0].Codec)
+	}
+}
+
 // TestToStreamFormatParsesFields checks the field mapping and the string
 // contentLength conversion.
 func TestToStreamFormatParsesFields(t *testing.T) {

@@ -63,7 +63,42 @@ type StreamOptions struct {
 	// VISIONOS, which is the profile that returns direct media URLs. It exists
 	// so a caller can benchmark an alternative without editing this package.
 	ClientName string
+
+	// Video also resolves the video renditions. They are kept out of Formats
+	// because a music player wants audio, and because an adaptive video track
+	// carries no audio: playing one alone gives silence.
+	Video bool
+
+	// MaxHeight caps the chosen video resolution in pixels. Zero means no cap.
+	// It only filters: a cap that would leave nothing is ignored.
+	MaxHeight int
+
+	// VideoCodec prefers a video family when Video is set. It ranks rather than
+	// filters, so a codec the endpoint did not offer falls back to the best
+	// available rendition instead of failing the call.
+	//
+	// Preferring H264 is the way to get hardware decoding on older GPUs: many
+	// decoders, and WebKitGTK, have no VP9 or AV1 support. YouTube serves avc1
+	// only up to 1080p, so asking for it caps the resolution there.
+	VideoCodec VideoCodec
 }
+
+// VideoCodec names a video family a caller can ask for.
+type VideoCodec string
+
+const (
+	// VideoCodecAuto takes the highest resolution available, whatever family
+	// that is. It is the zero value.
+	VideoCodecAuto VideoCodec = ""
+	// VideoCodecH264 is avc1, the family with the widest hardware and webview
+	// support.
+	VideoCodecH264 VideoCodec = "avc1"
+	// VideoCodecVP9 is the WebM family YouTube serves at every resolution.
+	VideoCodecVP9 VideoCodec = "vp9"
+	// VideoCodecAV1 is the most efficient family, and the least widely
+	// decodable in hardware.
+	VideoCodecAV1 VideoCodec = "av01"
+)
 
 // StreamFormat is one audio representation from a /player response.
 //
@@ -104,6 +139,39 @@ func (f StreamFormat) Expired(now time.Time) bool {
 	return !f.ExpiresAt.IsZero() && now.After(f.ExpiresAt)
 }
 
+// VideoFormat is one video representation from a /player response.
+type VideoFormat struct {
+	// Itag is YouTube's format identifier (137 is the usual 1080p H.264 rung).
+	Itag int `json:"itag"`
+	// MimeType is the full MIME type, codecs parameter included.
+	MimeType string `json:"mime_type"`
+	// Codec is the coarse family derived from MimeType: "vp9", "av01" or "avc1".
+	Codec string `json:"codec"`
+	// Width, Height and Fps describe the rendition.
+	Width  int `json:"width,omitempty"`
+	Height int `json:"height,omitempty"`
+	Fps    int `json:"fps,omitempty"`
+	// QualityLabel is the label the endpoint printed, such as "720p".
+	QualityLabel string `json:"quality_label,omitempty"`
+	// Bitrate is the average bitrate in bits per second.
+	Bitrate int `json:"bitrate"`
+	// ContentLength is the byte size of the representation, or 0 when unknown.
+	ContentLength int64 `json:"content_length,omitempty"`
+	// URL is the signed media URL, already authorised for this client.
+	URL string `json:"url"`
+	// ExpiresAt is when URL stops working.
+	ExpiresAt time.Time `json:"expires_at,omitempty"`
+	// Muxed reports that this rendition also carries audio, so it plays on its
+	// own. Every adaptive video track is video-only and needs a separate audio
+	// stream alongside it.
+	Muxed bool `json:"muxed,omitempty"`
+}
+
+// Expired reports whether the signed URL is past its expiry.
+func (f VideoFormat) Expired(now time.Time) bool {
+	return !f.ExpiresAt.IsZero() && now.After(f.ExpiresAt)
+}
+
 // Streams is the resolved playback information for one track.
 type Streams struct {
 	// VideoID is the track the formats belong to.
@@ -119,6 +187,9 @@ type Streams struct {
 	// Formats are every audio format the endpoint returned, best first under
 	// the requested preference. The selected one is Formats[0] when non-empty.
 	Formats []StreamFormat `json:"formats,omitempty"`
+	// VideoFormats is every video rendition, best first, and is only populated
+	// when StreamOptions.Video was set.
+	VideoFormats []VideoFormat `json:"video_formats,omitempty"`
 }
 
 // Best returns the format selection settled on, which is the first entry.
@@ -127,6 +198,25 @@ func (s *Streams) Best() (StreamFormat, bool) {
 		return StreamFormat{}, false
 	}
 	return s.Formats[0], true
+}
+
+// BestVideo returns the video rendition selection settled on, which is the
+// first entry. It reports false when VideoFormats is empty.
+func (s *Streams) BestVideo() (VideoFormat, bool) {
+	if s == nil || len(s.VideoFormats) == 0 {
+		return VideoFormat{}, false
+	}
+	return s.VideoFormats[0], true
+}
+
+// AudioFor returns the audio track that has to be played alongside a video
+// rendition. A muxed rendition already carries its own audio, so it reports
+// false and the caller plays it alone.
+func (s *Streams) AudioFor(v VideoFormat) (StreamFormat, bool) {
+	if v.Muxed {
+		return StreamFormat{}, false
+	}
+	return s.Best()
 }
 
 // playerResponse is the slice of the /player body streaming needs. Everything
@@ -168,6 +258,11 @@ type playerFormat struct {
 	// Width is present only on video formats, which is how audio is told apart
 	// when the MIME type is ambiguous.
 	Width flexInt `json:"width"`
+	// Height, Fps and QualityLabel describe a video rendition and are absent on
+	// audio-only formats.
+	Height       flexInt `json:"height"`
+	Fps          flexInt `json:"fps"`
+	QualityLabel string  `json:"qualityLabel"`
 	// SignatureCipher means the URL is not directly usable. This package does
 	// not implement the cipher, so such a format is dropped rather than
 	// returned half-usable.
@@ -302,12 +397,26 @@ func (c *Client) GetStreamWithOptions(ctx context.Context, songID string, opts S
 			candidates = append(candidates, sf)
 		}
 	}
-	if len(candidates) == 0 {
+	if len(candidates) == 0 && !opts.Video {
 		return nil, ErrStreamNotFound
 	}
 
 	out.Formats = selectAudioFormat(candidates, opts)
-	if len(out.Formats) == 0 {
+
+	if opts.Video {
+		// The muxed entries live in streamingData.formats and the adaptive ones
+		// in streamingData.adaptiveFormats; only the former carry audio.
+		video := make([]VideoFormat, 0, len(all))
+		for i, f := range all {
+			vf, ok := toVideoFormat(f, i < len(resp.StreamingData.Formats))
+			if ok {
+				video = append(video, vf)
+			}
+		}
+		out.VideoFormats = selectVideoFormat(video, opts)
+	}
+
+	if len(out.Formats) == 0 && len(out.VideoFormats) == 0 {
 		return nil, ErrStreamNotFound
 	}
 
@@ -354,6 +463,128 @@ func codecOf(mimeType string) AudioCodec {
 		return CodecAAC
 	default:
 		return AudioCodec(lower)
+	}
+}
+
+// toVideoFormat converts one raw format to a VideoFormat, reporting false for
+// entries that are not directly playable video.
+//
+// muxed says the entry came from streamingData.formats, which is the only place
+// a rendition carrying both streams can appear.
+func toVideoFormat(f playerFormat, muxed bool) (VideoFormat, bool) {
+	if f.URL == "" || f.SignatureCipher != "" {
+		return VideoFormat{}, false
+	}
+	if !strings.HasPrefix(f.MimeType, "video/") && f.Width == 0 {
+		return VideoFormat{}, false
+	}
+
+	vf := VideoFormat{
+		Itag:          int(f.Itag),
+		MimeType:      f.MimeType,
+		Codec:         videoCodecOf(f.MimeType),
+		Width:         int(f.Width),
+		Height:        int(f.Height),
+		Fps:           int(f.Fps),
+		QualityLabel:  f.QualityLabel,
+		Bitrate:       int(f.Bitrate),
+		ContentLength: int64(f.ContentLength),
+		URL:           f.URL,
+		ExpiresAt:     expiryOf(f.URL),
+		Muxed:         muxed,
+	}
+	return vf, true
+}
+
+// videoCodecOf names the video family in a MIME type.
+func videoCodecOf(mimeType string) string {
+	lower := strings.ToLower(mimeType)
+	switch {
+	case strings.Contains(lower, "av01"):
+		return "av01"
+	case strings.Contains(lower, "vp9"), strings.Contains(lower, "vp09"):
+		return "vp9"
+	case strings.Contains(lower, "vp8"):
+		return "vp8"
+	case strings.Contains(lower, "avc1"), strings.Contains(lower, "h264"):
+		return "avc1"
+	default:
+		return lower
+	}
+}
+
+// selectVideoFormat orders renditions by the requested preference and applies
+// the MaxHeight cap. It always returns a copy: the caller's slice is not
+// reordered.
+//
+// Ranking, in order:
+//  1. codec family, by the preference in opts
+//  2. height, descending
+//  3. frame rate, descending
+//  4. bitrate, descending
+//  5. muxed first, so an equal rendition needs no second stream
+//
+// MaxHeight filters before ranking, but only if it leaves something: a cap that
+// would empty the list is ignored rather than failing the call.
+func selectVideoFormat(candidates []VideoFormat, opts StreamOptions) []VideoFormat {
+	pool := make([]VideoFormat, len(candidates))
+	copy(pool, candidates)
+
+	if opts.MaxHeight > 0 {
+		capped := make([]VideoFormat, 0, len(pool))
+		for _, f := range pool {
+			if f.Height > 0 && f.Height <= opts.MaxHeight {
+				capped = append(capped, f)
+			}
+		}
+		if len(capped) > 0 {
+			pool = capped
+		}
+	}
+
+	rank := videoCodecRank(opts.VideoCodec)
+	sort.SliceStable(pool, func(i, j int) bool {
+		ri, rj := rank(pool[i].Codec), rank(pool[j].Codec)
+		if ri != rj {
+			return ri < rj
+		}
+		if pool[i].Height != pool[j].Height {
+			return pool[i].Height > pool[j].Height
+		}
+		if pool[i].Fps != pool[j].Fps {
+			return pool[i].Fps > pool[j].Fps
+		}
+		if pool[i].Bitrate != pool[j].Bitrate {
+			return pool[i].Bitrate > pool[j].Bitrate
+		}
+		if pool[i].Muxed != pool[j].Muxed {
+			return pool[i].Muxed
+		}
+		return pool[i].Itag < pool[j].Itag
+	})
+	return pool
+}
+
+// videoCodecRank returns a score for one video family under a preference. A
+// lower score is better, so the sort is ascending.
+//
+// Auto scores every family equally, which leaves resolution to decide. That
+// keeps the default predictable, and it means a caller who needs a decodable
+// family has to say so: on a GPU without a VP9 decoder, auto can pick a
+// rendition nothing can play in hardware.
+func videoCodecRank(want VideoCodec) func(string) int {
+	order := []VideoCodec{}
+	switch want {
+	case VideoCodecH264, VideoCodecVP9, VideoCodecAV1:
+		order = []VideoCodec{want}
+	}
+	return func(got string) int {
+		for i, c := range order {
+			if got == string(c) {
+				return i
+			}
+		}
+		return len(order)
 	}
 }
 
