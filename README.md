@@ -14,6 +14,7 @@
 - **Radio Recommendations**: Build recommended radio mix tracklists dynamically.
 - **Signed-in Library**: Read the account's playlists, liked songs, albums and artists, with paging.
 - **Account & Channels**: List the channels a Google account owns, read its display name and email, and switch the active channel.
+- **Video Renditions**: Opt in to the video tracks behind a song, with a resolution cap and a codec preference for hardware decoding.
 
 ---
 
@@ -118,6 +119,35 @@ Retrieves detailed metadata and tracklistings for playlists or albums.
 ### `client.GetSongLyrics(ctx, lyricsBrowseID)`
 Retrieves the plaintext lyrics for a song.
 - **Returns**: `string, error`
+
+### `client.GetStreamWithOptions(ctx, songID, opts)`
+Resolves playable media URLs for a track. `GetStream` is the same call with the
+default options.
+- **Returns**: `*Streams, error`
+
+Only audio is returned by default. `opts.Video` adds the video renditions:
+
+```go
+streams, err := client.GetStreamWithOptions(ctx, id, ytm.StreamOptions{
+    Video:      true,
+    MaxHeight:  720,
+    VideoCodec: ytm.VideoCodecH264,
+})
+audio, _ := streams.Best()
+video, ok := streams.BestVideo()
+```
+
+An adaptive video rendition carries no audio, so `streams.AudioFor(video)` returns
+the audio track that has to be played alongside it. A muxed rendition reports false
+and plays on its own.
+
+`VideoCodec` ranks rather than filters, so a family the endpoint did not offer falls
+back instead of failing. Preferring H264 is how you get hardware decoding where VP9
+and AV1 are unsupported; YouTube serves avc1 only up to 1080p.
+
+The URLs answer byte ranges, so a player can stream and seek them directly. Do not
+save one in a single long request: fetch a few MiB at a time, or the transfer is
+throttled to a crawl partway through.
 
 ### Authentication
 

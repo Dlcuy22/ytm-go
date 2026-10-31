@@ -14,6 +14,7 @@
 - **Rekomendasi (Radio)**: Membangun daftar putar rekomendasi (radio) secara dinamis.
 - **Pustaka Akun**: Membaca playlist, lagu disukai, album dan artis milik akun, lengkap dengan paging.
 - **Akun & Channel**: Mendaftar channel milik satu akun Google, membaca nama dan email, serta berpindah channel aktif.
+- **Video Rendition**: Mengambil track video di balik sebuah lagu secara opsional, dengan batas resolusi dan preferensi codec untuk decoding hardware.
 
 ---
 
@@ -118,6 +119,37 @@ Memuat daftar tracklist dari sebuah playlist, album, atau radio feed.
 ### `client.GetSongLyrics(ctx, lyricsBrowseID)`
 Mengambil teks lirik (plaintext) dari track terkait menggunakan ID lirik.
 - **Returns**: `string, error`
+
+### `client.GetStreamWithOptions(ctx, songID, opts)`
+Mengambil URL media yang bisa diputar untuk sebuah track. `GetStream` adalah
+panggilan yang sama dengan opsi bawaan.
+- **Returns**: `*Streams, error`
+
+Secara bawaan hanya audio yang dikembalikan. `opts.Video` menambahkan rendition
+video:
+
+```go
+streams, err := client.GetStreamWithOptions(ctx, id, ytm.StreamOptions{
+    Video:      true,
+    MaxHeight:  720,
+    VideoCodec: ytm.VideoCodecH264,
+})
+audio, _ := streams.Best()
+video, ok := streams.BestVideo()
+```
+
+Rendition video adaptive tidak membawa audio, jadi `streams.AudioFor(video)`
+mengembalikan track audio yang harus diputar bersamanya. Rendition muxed
+mengembalikan false dan bisa diputar sendiri.
+
+`VideoCodec` hanya mengurutkan, bukan menyaring, sehingga codec yang tidak
+disediakan endpoint tetap jatuh ke rendition terbaik alih-alih gagal. Memilih H264
+adalah cara mendapatkan decoding hardware di mesin yang tidak mendukung VP9 dan
+AV1; YouTube hanya menyediakan avc1 sampai 1080p.
+
+URL-nya mendukung byte range, jadi player bisa streaming dan seek langsung. Jangan
+mengunduhnya dalam satu request panjang: ambil beberapa MiB sekaligus, atau
+transfernya akan di-throttle sampai sangat lambat di tengah jalan.
 
 ### Autentikasi
 
