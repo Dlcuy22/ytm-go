@@ -23,6 +23,33 @@ import (
 )
 
 /*
+tabBrowseID returns the browse ID of the first tab whose page type matches.
+
+Tabs are not a fixed list: a music track gets Up next, Lyrics, Comments and
+Related, while a podcast gets Up next, Details, Comments and Related. Indexing
+them positionally hands back the wrong page, which is why the page type is what
+this looks at.
+
+    params:
+          tabs: watch-next tabs
+          pageType: MUSIC_PAGE_TYPE_* identifier to match
+    returns:
+          string: the matching tab's browse ID, or empty when no tab matches
+*/
+func tabBrowseID(tabs []Tab, pageType string) string {
+	for _, tab := range tabs {
+		if tab.TabRenderer.Endpoint == nil {
+			continue
+		}
+		endpoint := tab.TabRenderer.Endpoint.BrowseEndpoint
+		if endpoint.PageType() == pageType && endpoint.BrowseID != "" {
+			return endpoint.BrowseID
+		}
+	}
+	return ""
+}
+
+/*
 LoadSong retrieves metadata details for the specified song ID.
 
     params:
@@ -90,15 +117,8 @@ func parseSongResponse(log *slog.Logger, songID string, nextResp *YoutubeiNextRe
 		return nil
 	}
 
-	var lyricsBrowseID string
-	if len(tabs) > 1 && tabs[1].TabRenderer.Endpoint != nil && tabs[1].TabRenderer.Endpoint.BrowseEndpoint.BrowseID != "" {
-		lyricsBrowseID = tabs[1].TabRenderer.Endpoint.BrowseEndpoint.BrowseID
-	}
-
-	var relatedBrowseID string
-	if len(tabs) > 2 && tabs[2].TabRenderer.Endpoint != nil && tabs[2].TabRenderer.Endpoint.BrowseEndpoint.BrowseID != "" {
-		relatedBrowseID = tabs[2].TabRenderer.Endpoint.BrowseEndpoint.BrowseID
-	}
+	lyricsBrowseID := tabBrowseID(tabs, "MUSIC_PAGE_TYPE_TRACK_LYRICS")
+	relatedBrowseID := tabBrowseID(tabs, "MUSIC_PAGE_TYPE_TRACK_RELATED")
 
 	tab0 := tabs[0]
 	if tab0.TabRenderer.Content == nil || tab0.TabRenderer.Content.MusicQueueRenderer == nil || tab0.TabRenderer.Content.MusicQueueRenderer.Content == nil {
