@@ -10,7 +10,7 @@
 - **Full Metadata Extraction**: Retrieve tracks' detailed info (title, artists, duration, thumbnail provider, explicit tags).
 - **Artist Profiles**: Load artist details, channel statistics, and categorized visual shelves (singles, popular tracks, albums).
 - **Playlists & Albums**: Read the complete tracklists and metadata for public playlists or official albums.
-- **Lyrics Sheet Loading**: Fetch plaintext lyrics using a song's lyrics browse ID.
+- **Lyrics Sheet Loading**: Fetch plaintext lyrics, and timed lyrics with per-line cue ranges, using a song's lyrics browse ID.
 - **Radio Recommendations**: Build recommended radio mix tracklists dynamically.
 - **Signed-in Library**: Read the account's playlists, liked songs, albums and artists, with paging.
 - **Account & Channels**: List the channels a Google account owns, read its display name and email, and switch the active channel.
@@ -119,6 +119,28 @@ Retrieves detailed metadata and tracklistings for playlists or albums.
 ### `client.GetSongLyrics(ctx, lyricsBrowseID)`
 Retrieves the plaintext lyrics for a song.
 - **Returns**: `string, error`
+
+### `client.GetSongLyricsTimed(ctx, lyricsBrowseID)`
+Retrieves the lyric sheet for a song, with cue ranges when the endpoint has
+them. `Song.LyricsBrowseID` is the ID to pass, and `LoadSong` is what fills it.
+- **Returns**: `*Lyrics, error`
+
+```go
+sheet, err := client.GetSongLyricsTimed(ctx, song.LyricsBrowseID)
+if errors.Is(err, ytm.ErrLyricsNotAvailable) {
+    // the track has no lyrics
+}
+for _, line := range sheet.Lines {
+    fmt.Println(line.StartMs, line.Text) // StartMs is 0 for an untimed sheet
+}
+fmt.Println(sheet.Synced)
+```
+
+The request uses the iOS Music client, which is the profile the endpoint answers
+with timed lines. When that profile is refused or returns nothing, the desktop
+web client is used instead and the sheet comes back unsynced. The client version
+is therefore load-bearing: YouTube retires old ones with
+`FAILED_PRECONDITION`, which is what the fallback is for.
 
 ### `client.GetStreamWithOptions(ctx, songID, opts)`
 Resolves playable media URLs for a track. `GetStream` is the same call with the

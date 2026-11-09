@@ -35,6 +35,8 @@ var (
 	ErrLoginRequired       = errors.New("login required")
 	ErrContentNotAvailable = errors.New("content not available")
 	ErrStreamNotFound      = errors.New("stream not found")
+	ErrLyricsNotFound      = errors.New("lyrics not found")
+	ErrLyricsNotAvailable  = errors.New("lyrics not available")
 
 	// ErrSessionExpired means credentials were supplied but the server treated
 	// the request as signed out. It is a different failure from ErrLoginRequired:

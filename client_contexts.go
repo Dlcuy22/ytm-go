@@ -161,6 +161,40 @@ func GetContextIOS(hl string) ClientContext {
 }
 
 /*
+GetContextIOSMusic generates the iOS YouTube Music app client context.
+
+It is the profile that returns timed lyrics. The lyric browse endpoint answers
+this client with timedLyricsModel, a per-line cue range list; the desktop web
+client is answered with a plaintext description shelf instead, with no timing
+at all.
+
+ClientVersion is load-bearing. Older iOS Music builds are refused with
+FAILED_PRECONDITION, so a stale version turns synced lyrics into a request
+error rather than degrading on its own. GetSongLyricsTimed falls back to the web
+client for that reason.
+
+    params:
+          hl: language tag (e.g. en-GB)
+    returns:
+          ClientContext: IOS_MUSIC client context
+*/
+func GetContextIOSMusic(hl string) ClientContext {
+	return ClientContext{
+		HL:            hl,
+		Platform:      "MOBILE",
+		ClientName:    "IOS_MUSIC",
+		ClientVersion: "7.01.05",
+		ClientID:      "26",
+		DeviceMake:    "Apple",
+		DeviceModel:   "iPhone16,2",
+		OsName:        "iPhone",
+		OsVersion:     "17.5.1.21F90",
+		UserAgent:     "com.google.ios.youtube.music/7.01.05 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)",
+		AcceptHeader:  "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+	}
+}
+
+/*
 GetContextVisionOS generates the visionOS playback client context.
 
 This is the profile that makes direct streaming possible. It is an unreleased
