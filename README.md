@@ -12,6 +12,7 @@
 - **Playlists & Albums**: Read the complete tracklists and metadata for public playlists or official albums.
 - **Lyrics Sheet Loading**: Fetch plaintext lyrics, and timed lyrics with per-line cue ranges, using a song's lyrics browse ID.
 - **Radio Recommendations**: Build recommended radio mix tracklists dynamically.
+- **Mix Playlists**: Read the queue behind a shared "RD…" mix id, seeded where the link would start and paged by continuation.
 - **Signed-in Library**: Read the account's playlists, liked songs, albums and artists, with paging.
 - **Account & Channels**: List the channels a Google account owns, read its display name and email, and switch the active channel.
 - **Video Renditions**: Opt in to the video tracks behind a song, with a resolution cap and a codec preference for hardware decoding.

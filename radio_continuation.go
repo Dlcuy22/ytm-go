@@ -69,6 +69,17 @@ func (bc *BuiltInContinuation) LoadContinuation(ctx context.Context, client *Cli
 			items = append(items, item)
 		}
 		return items, playlist.Continuation, nil
+
+	case ContinuationMix:
+		playlist, err := client.GetMix(ctx, bc.ItemID, bc)
+		if err != nil {
+			return nil, nil, err
+		}
+		var items []MediaItem
+		for _, item := range playlist.Items {
+			items = append(items, item)
+		}
+		return items, playlist.Continuation, nil
 	}
 
 	return nil, nil, fmt.Errorf("unsupported continuation type: %s", bc.Type)

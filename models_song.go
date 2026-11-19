@@ -159,6 +159,7 @@ const (
 	ContinuationPlaylist      ContinuationType = "PLAYLIST"
 	ContinuationPlaylistInit  ContinuationType = "PLAYLIST_INITIAL"
 	ContinuationArtistShuffle ContinuationType = "ARTIST_SHUFFLE"
+	ContinuationMix           ContinuationType = "MIX"
 )
 
 // BuiltInContinuation contains parameters needed to continue loading lists or radios.

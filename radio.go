@@ -176,30 +176,8 @@ func (c *Client) GetSongRadio(ctx context.Context, songID string, continuation *
 		}
 	}
 
-	var songs []Song
-	for _, item := range radioContents {
-		renderer := item.GetRenderer()
-		if renderer == nil {
-			continue
-		}
-
-		var duration int64
-		if renderer.LengthText != nil {
-			duration = parseDurationMs(renderer.LengthText.FirstText())
-		}
-
-		songs = append(songs, Song{
-			ID:         CleanSongID(renderer.VideoID),
-			Name:       renderer.Title.FirstText(),
-			DurationMs: duration,
-			Artists:    renderer.GetArtists(),
-			Album:      renderer.GetAlbum(),
-			Thumbnail:  NewThumbnailProvider(renderer.Thumbnail.Thumbnail.Thumbnails),
-		})
-	}
-
 	return &RadioData{
-		Items:        songs,
+		Items:        playlistPanelSongs(radioContents),
 		Continuation: nextContinuation,
 		Filters:      outFilters,
 	}, nil
