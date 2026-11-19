@@ -158,7 +158,7 @@ func parseSongResponse(log *slog.Logger, songID string, nextResp *YoutubeiNextRe
 		DurationMs:      duration,
 		LyricsBrowseID:  lyricsBrowseID,
 		RelatedBrowseID: relatedBrowseID,
-		Thumbnail:       NewThumbnailProvider(video.Thumbnail.Thumbnail.Thumbnails),
+		Thumbnail:       NewThumbnailProvider(video.Thumbnail.List()),
 		Album:           video.GetAlbum(),
 	}
 }

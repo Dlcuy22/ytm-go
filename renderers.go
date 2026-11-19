@@ -182,6 +182,19 @@ type MusicThumbnailRenderer struct {
 	Thumbnail struct {
 		Thumbnails []Thumbnail `json:"thumbnails"`
 	} `json:"thumbnail"`
+
+	// Thumbnails is the queue-row shape. A playlist panel lists its stills one
+	// level higher than the other renderers, so both shapes are read.
+	Thumbnails []Thumbnail `json:"thumbnails"`
+}
+
+// List returns the stills from whichever shape the response carried.
+func (m MusicThumbnailRenderer) List() []Thumbnail {
+	if len(m.Thumbnails) > 0 {
+		return m.Thumbnails
+	}
+
+	return m.Thumbnail.Thumbnails
 }
 
 // ThumbnailRenderer wraps MusicThumbnailRenderer.
