@@ -1,7 +1,8 @@
 // Package ytm provides models and definitions for YouTube Music InnerTube requests and responses.
 //
 // Purpose:
-//   Define the raw InnerTube response JSON structures and parsers.
+//
+//	Define the raw InnerTube response JSON structures and parsers.
 //
 // Key Components:
 //   - YoutubeiBrowseResponse: represents InnerTube browse outcome JSON
@@ -14,7 +15,6 @@
 //
 // Error Types:
 //   - None
-//
 package ytm
 
 import (
@@ -211,19 +211,19 @@ func (tr ThumbnailRenderer) ToThumbnailProvider() *ThumbnailProvider {
 
 // MusicResponsiveListItemRenderer represents responsive items in lists.
 type MusicResponsiveListItemRenderer struct {
-	PlaylistItemData  *RendererPlaylistItemData `json:"playlistItemData,omitempty"`
-	FlexColumns       []FlexColumn              `json:"flexColumns,omitempty"`
-	FixedColumns      []FixedColumn             `json:"fixedColumns,omitempty"`
-	Thumbnail         *ThumbnailRenderer        `json:"thumbnail,omitempty"`
+	PlaylistItemData   *RendererPlaylistItemData `json:"playlistItemData,omitempty"`
+	FlexColumns        []FlexColumn              `json:"flexColumns,omitempty"`
+	FixedColumns       []FixedColumn             `json:"fixedColumns,omitempty"`
+	Thumbnail          *ThumbnailRenderer        `json:"thumbnail,omitempty"`
 	NavigationEndpoint *NavigationEndpoint       `json:"navigationEndpoint,omitempty"`
-	Menu              *Menu                     `json:"menu,omitempty"`
-	Index             *TextRuns                 `json:"index,omitempty"`
-	Badges            []Badge                   `json:"badges,omitempty"`
+	Menu               *Menu                     `json:"menu,omitempty"`
+	Index              *TextRuns                 `json:"index,omitempty"`
+	Badges             []Badge                   `json:"badges,omitempty"`
 }
 
 type RendererPlaylistItemData struct {
-	VideoID             string `json:"videoId"`
-	PlaylistSetVideoID  string `json:"playlistSetVideoId,omitempty"`
+	VideoID            string `json:"videoId"`
+	PlaylistSetVideoID string `json:"playlistSetVideoId,omitempty"`
 }
 
 type FlexColumn struct {
@@ -648,12 +648,12 @@ func (r *MusicTwoRowItemRenderer) toMediaItem() MediaItem {
 
 // MusicMultiRowListItemRenderer represents podcast show list items.
 type MusicMultiRowListItemRenderer struct {
-	Title       TextRuns           `json:"title"`
-	Subtitle    TextRuns           `json:"subtitle"`
-	Thumbnail   ThumbnailRenderer  `json:"thumbnail"`
-	Menu        Menu               `json:"menu"`
-	OnTap       *OnTap             `json:"onTap,omitempty"`
-	SecondTitle *TextRuns          `json:"secondTitle,omitempty"`
+	Title       TextRuns          `json:"title"`
+	Subtitle    TextRuns          `json:"subtitle"`
+	Thumbnail   ThumbnailRenderer `json:"thumbnail"`
+	Menu        Menu              `json:"menu"`
+	OnTap       *OnTap            `json:"onTap,omitempty"`
+	SecondTitle *TextRuns         `json:"secondTitle,omitempty"`
 }
 
 type OnTap struct {
@@ -755,7 +755,7 @@ type YoutubeiShelfContentsItem struct {
 	MusicTwoRowItemRenderer         *MusicTwoRowItemRenderer         `json:"musicTwoRowItemRenderer,omitempty"`
 	MusicResponsiveListItemRenderer *MusicResponsiveListItemRenderer `json:"musicResponsiveListItemRenderer,omitempty"`
 	MusicMultiRowListItemRenderer   *MusicMultiRowListItemRenderer   `json:"musicMultiRowListItemRenderer,omitempty"`
-	ContinuationItemRenderer         *ContinuationItemRenderer         `json:"continuationItemRenderer,omitempty"`
+	ContinuationItemRenderer        *ContinuationItemRenderer        `json:"continuationItemRenderer,omitempty"`
 }
 
 func (i *YoutubeiShelfContentsItem) ParseItem(hl string) (MediaItem, string) {
@@ -833,8 +833,8 @@ type MoreContentButton struct {
 }
 
 type MusicDescriptionShelfRenderer struct {
-	Description TextRuns        `json:"description"`
-	Header      *TextRuns       `json:"header,omitempty"`
+	Description TextRuns  `json:"description"`
+	Header      *TextRuns `json:"header,omitempty"`
 }
 
 type MusicCardShelfHeaderBasicRenderer struct {
@@ -917,9 +917,9 @@ func (c *MusicCardShelfRenderer) GetMediaItem() MediaItem {
 }
 
 type MusicResponsiveHeaderRenderer struct {
-	Title           *TextRuns `json:"title,omitempty"`
+	Title            *TextRuns `json:"title,omitempty"`
 	StraplineTextOne *TextRuns `json:"straplineTextOne,omitempty"`
-	Description     *struct {
+	Description      *struct {
 		MusicDescriptionShelfRenderer MusicDescriptionShelfRenderer `json:"musicDescriptionShelfRenderer"`
 	} `json:"description,omitempty"`
 	Thumbnail *struct {
@@ -1002,10 +1002,29 @@ type MusicDetailHeaderRenderer struct {
 	Menu               *Menu               `json:"menu,omitempty"`
 }
 
+// FlexInt unmarshals a JSON integer encoded as either a number (4) or a string ("4").
+type FlexInt int
+
+func (f *FlexInt) UnmarshalJSON(b []byte) error {
+	s := strings.TrimSpace(string(b))
+	if s == "" || s == "null" {
+		return nil
+	}
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		s = s[1 : len(s)-1]
+	}
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		return err
+	}
+	*f = FlexInt(v)
+	return nil
+}
+
 type MusicCarouselShelfRenderer struct {
 	Header            *Header                     `json:"header,omitempty"`
 	Contents          []YoutubeiShelfContentsItem `json:"contents"`
-	NumItemsPerColumn *int                        `json:"numItemsPerColumn,omitempty"`
+	NumItemsPerColumn *FlexInt                    `json:"numItemsPerColumn,omitempty"`
 }
 
 type MusicShelfRenderer struct {
@@ -1017,16 +1036,16 @@ type MusicShelfRenderer struct {
 
 // YoutubeiShelf represents visual groups of items.
 type YoutubeiShelf struct {
-	MusicShelfRenderer          *MusicShelfRenderer          `json:"musicShelfRenderer,omitempty"`
-	MusicCarouselShelfRenderer *MusicCarouselShelfRenderer `json:"musicCarouselShelfRenderer,omitempty"`
-	MusicDescriptionShelfRenderer *MusicDescriptionShelfRenderer `json:"musicDescriptionShelfRenderer,omitempty"`
-	MusicPlaylistShelfRenderer  *MusicShelfRenderer          `json:"musicPlaylistShelfRenderer,omitempty"`
-	MusicCardShelfRenderer      *MusicCardShelfRenderer      `json:"musicCardShelfRenderer,omitempty"`
-	MusicResponsiveHeaderRenderer *MusicResponsiveHeaderRenderer `json:"musicResponsiveHeaderRenderer,omitempty"`
+	MusicShelfRenderer                        *MusicShelfRenderer                        `json:"musicShelfRenderer,omitempty"`
+	MusicCarouselShelfRenderer                *MusicCarouselShelfRenderer                `json:"musicCarouselShelfRenderer,omitempty"`
+	MusicDescriptionShelfRenderer             *MusicDescriptionShelfRenderer             `json:"musicDescriptionShelfRenderer,omitempty"`
+	MusicPlaylistShelfRenderer                *MusicShelfRenderer                        `json:"musicPlaylistShelfRenderer,omitempty"`
+	MusicCardShelfRenderer                    *MusicCardShelfRenderer                    `json:"musicCardShelfRenderer,omitempty"`
+	MusicResponsiveHeaderRenderer             *MusicResponsiveHeaderRenderer             `json:"musicResponsiveHeaderRenderer,omitempty"`
 	MusicEditablePlaylistDetailHeaderRenderer *MusicEditablePlaylistDetailHeaderRenderer `json:"musicEditablePlaylistDetailHeaderRenderer,omitempty"`
-	GridRenderer                *GridRenderer                `json:"gridRenderer,omitempty"`
-	ItemSectionRenderer         *ItemSectionRenderer         `json:"itemSectionRenderer,omitempty"`
-	ContinuationItemRenderer    *ContinuationItemRenderer    `json:"continuationItemRenderer,omitempty"`
+	GridRenderer                              *GridRenderer                              `json:"gridRenderer,omitempty"`
+	ItemSectionRenderer                       *ItemSectionRenderer                       `json:"itemSectionRenderer,omitempty"`
+	ContinuationItemRenderer                  *ContinuationItemRenderer                  `json:"continuationItemRenderer,omitempty"`
 }
 
 func (s YoutubeiShelf) Title() string {
@@ -1091,6 +1110,9 @@ func (s YoutubeiShelf) Thumbnails() []Thumbnail {
 func (s YoutubeiShelf) Artist() *Artist {
 	if s.MusicResponsiveHeaderRenderer != nil && s.MusicResponsiveHeaderRenderer.StraplineTextOne != nil {
 		for _, run := range s.MusicResponsiveHeaderRenderer.StraplineTextOne.Runs {
+			if run.NavigationEndpoint == nil {
+				continue
+			}
 			if item := run.NavigationEndpoint.GetMediaItem(); item != nil {
 				if a, ok := item.(*Artist); ok {
 					a.Name = run.Text
@@ -1276,10 +1298,10 @@ func (r ItemSectionRenderer) GetMediaItems(hl string) []MediaItem {
 }
 
 type ItemSectionRendererContent struct {
-	DidYouMeanRenderer               *DidYouMeanRenderer               `json:"didYouMeanRenderer,omitempty"`
-	MusicResponsiveListItemRenderer  *MusicResponsiveListItemRenderer  `json:"musicResponsiveListItemRenderer,omitempty"`
-	PlaylistVideoListRenderer        *PlaylistVideoListRenderer        `json:"playlistVideoListRenderer,omitempty"`
-	VideoRenderer                    *VideoRenderer                    `json:"videoRenderer,omitempty"`
+	DidYouMeanRenderer              *DidYouMeanRenderer              `json:"didYouMeanRenderer,omitempty"`
+	MusicResponsiveListItemRenderer *MusicResponsiveListItemRenderer `json:"musicResponsiveListItemRenderer,omitempty"`
+	PlaylistVideoListRenderer       *PlaylistVideoListRenderer       `json:"playlistVideoListRenderer,omitempty"`
+	VideoRenderer                   *VideoRenderer                   `json:"videoRenderer,omitempty"`
 }
 
 type DidYouMeanRenderer struct {
@@ -1421,7 +1443,7 @@ type SecondaryContents struct {
 
 type Tab struct {
 	TabRenderer struct {
-		Content  *Content            `json:"content,omitempty"`
+		Content  *Content             `json:"content,omitempty"`
 		Endpoint *TabRendererEndpoint `json:"endpoint,omitempty"`
 	} `json:"tabRenderer"`
 }
@@ -1539,8 +1561,8 @@ type YoutubeiNextResponse struct {
 }
 
 type MusicQueueRenderer struct {
-	Content             *MusicQueueRendererContent `json:"content,omitempty"`
-	SubHeaderChipCloud  *SubHeaderChipCloud        `json:"subHeaderChipCloud,omitempty"`
+	Content            *MusicQueueRendererContent `json:"content,omitempty"`
+	SubHeaderChipCloud *SubHeaderChipCloud        `json:"subHeaderChipCloud,omitempty"`
 }
 
 type SubHeaderChipCloud struct {
@@ -1592,13 +1614,13 @@ type PlaylistPanelVideoWrapperRenderer struct {
 }
 
 type PlaylistPanelVideoRenderer struct {
-	VideoID       string             `json:"videoId"`
-	Title         TextRuns           `json:"title"`
-	LongBylineText TextRuns           `json:"longBylineText"`
-	Menu          Menu               `json:"menu"`
-	Thumbnail     MusicThumbnailRenderer `json:"thumbnail"`
-	Badges        []Badge            `json:"badges,omitempty"`
-	LengthText    *TextRuns          `json:"lengthText,omitempty"`
+	VideoID        string                 `json:"videoId"`
+	Title          TextRuns               `json:"title"`
+	LongBylineText TextRuns               `json:"longBylineText"`
+	Menu           Menu                   `json:"menu"`
+	Thumbnail      MusicThumbnailRenderer `json:"thumbnail"`
+	Badges         []Badge                `json:"badges,omitempty"`
+	LengthText     *TextRuns              `json:"lengthText,omitempty"`
 }
 
 func (vr PlaylistPanelVideoRenderer) GetAlbum() *Playlist {
@@ -1655,8 +1677,8 @@ func (vr PlaylistPanelVideoRenderer) GetArtists() []Artist {
 
 type Menu struct {
 	MenuRenderer struct {
-		Items           []MenuItem        `json:"items"`
-		TopLevelButtons []TopLevelButton  `json:"topLevelButtons,omitempty"`
+		Items           []MenuItem       `json:"items"`
+		TopLevelButtons []TopLevelButton `json:"topLevelButtons,omitempty"`
 	} `json:"menuRenderer"`
 }
 
@@ -1670,7 +1692,7 @@ type TopLevelButton struct {
 }
 
 type MenuItem struct {
-	MenuNavigationItemRenderer *MenuNavigationItemRenderer `json:"menuNavigationItemRenderer,omitempty"`
+	MenuNavigationItemRenderer    *MenuNavigationItemRenderer    `json:"menuNavigationItemRenderer,omitempty"`
 	ToggleMenuServiceItemRenderer *ToggleMenuServiceItemRenderer `json:"toggleMenuServiceItemRenderer,omitempty"`
 }
 
@@ -1678,11 +1700,11 @@ type MenuItem struct {
 // such as library membership. The two texts name the actions, and the two
 // service endpoints carry the tokens that perform them.
 type ToggleMenuServiceItemRenderer struct {
-	DefaultText            TextRuns              `json:"defaultText"`
-	ToggledText            TextRuns              `json:"toggledText"`
-	DefaultServiceEndpoint ServiceEndpoint       `json:"defaultServiceEndpoint"`
-	ToggledServiceEndpoint ServiceEndpoint       `json:"toggledServiceEndpoint"`
-	IsToggled              bool                  `json:"isToggled,omitempty"`
+	DefaultText            TextRuns        `json:"defaultText"`
+	ToggledText            TextRuns        `json:"toggledText"`
+	DefaultServiceEndpoint ServiceEndpoint `json:"defaultServiceEndpoint"`
+	ToggledServiceEndpoint ServiceEndpoint `json:"toggledServiceEndpoint"`
+	IsToggled              bool            `json:"isToggled,omitempty"`
 }
 
 // ServiceEndpoint is the command behind a menu entry. Only the feedback token
