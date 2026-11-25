@@ -20,6 +20,7 @@ package ytm
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // SongLikedStatus represents liking preference state.
@@ -58,12 +59,42 @@ func (c *Client) SetSongLiked(ctx context.Context, songID string, liked SongLike
 		return fmt.Errorf("invalid liked status: %s", liked)
 	}
 
-	var resp struct{}
-	return c.doInnerTube(ctx, path, GetContextWebRemix(c.hl), map[string]any{
+	var resp writeResponse
+	if err := c.doInnerTube(ctx, path, GetContextWebRemix(c.hl), map[string]any{
 		"target": map[string]any{
 			"videoId": songID,
 		},
-	}, true, &resp)
+	}, true, &resp); err != nil {
+		return err
+	}
+	return resp.checkStatus()
+}
+
+// SetPlaylistSaved saves or removes a playlist (including album OLAK IDs) in
+// the signed-in account's library.
+func (c *Client) SetPlaylistSaved(ctx context.Context, playlistID string, saved bool) error {
+	if err := requireAuth(c.auth); err != nil {
+		return err
+	}
+	id := formatYoutubePlaylistID(CleanPlaylistID(strings.TrimSpace(playlistID)))
+	if id == "" {
+		return fmt.Errorf("ytm: playlist id is required")
+	}
+
+	path := "like/removelike"
+	if saved {
+		path = "like/like"
+	}
+
+	var resp writeResponse
+	if err := c.doInnerTube(ctx, path, GetContextWebRemix(c.hl), map[string]any{
+		"target": map[string]any{
+			"playlistId": id,
+		},
+	}, true, &resp); err != nil {
+		return err
+	}
+	return resp.checkStatus()
 }
 
 /*
