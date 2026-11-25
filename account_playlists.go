@@ -27,6 +27,35 @@ import (
 	"strings"
 )
 
+// PlaylistPrivacy controls the visibility of a YouTube Music playlist.
+type PlaylistPrivacy string
+
+const (
+	PlaylistPrivate  PlaylistPrivacy = "PRIVATE"
+	PlaylistUnlisted PlaylistPrivacy = "UNLISTED"
+	PlaylistPublic   PlaylistPrivacy = "PUBLIC"
+)
+
+// CreatePlaylistOptions configures a new account playlist.
+type CreatePlaylistOptions struct {
+	Title       string
+	Description string
+	Privacy     PlaylistPrivacy // empty defaults to PlaylistPrivate
+	VideoIDs    []string
+}
+
+// DedupeMode controls how InnerTube handles songs already present in a playlist.
+type DedupeMode int
+
+const (
+	// DedupeAsk refuses the add and returns ErrDuplicates if any track is already in the playlist.
+	DedupeAsk DedupeMode = iota
+	// DedupeDrop skips tracks already in the playlist and adds only new ones.
+	DedupeDrop
+	// DedupeAdd skips the duplicate check and appends every track, even if already present.
+	DedupeAdd
+)
+
 // PlaylistEditActionType describes InnerTube edit actions.
 type PlaylistEditActionType string
 
@@ -118,8 +147,60 @@ func (c *Client) GetAccountPlaylists(ctx context.Context) ([]Playlist, error) {
 	return parseGridPlaylists(resp.libraryShelves(), c.hl, c.auth), nil
 }
 
+func sanitizePlaylistTitle(title string) string {
+	return strings.TrimSpace(strings.NewReplacer("<", "", ">", "").Replace(title))
+}
+
+// CreatePlaylist creates a new playlist on the signed-in account. Empty Privacy
+// defaults to PlaylistPrivate, and angle brackets are stripped from Title.
+func (c *Client) CreatePlaylist(ctx context.Context, opts CreatePlaylistOptions) (string, error) {
+	if err := requireAuth(c.auth); err != nil {
+		return "", err
+	}
+	title := sanitizePlaylistTitle(opts.Title)
+	if title == "" {
+		return "", fmt.Errorf("ytm: playlist title is required")
+	}
+	privacy := opts.Privacy
+	if privacy == "" {
+		privacy = PlaylistPrivate
+	}
+
+	body := map[string]any{
+		"title":         title,
+		"description":   opts.Description,
+		"privacyStatus": string(privacy),
+	}
+	if len(opts.VideoIDs) > 0 {
+		ids := make([]string, 0, len(opts.VideoIDs))
+		for _, id := range opts.VideoIDs {
+			if cleaned := CleanSongID(strings.TrimSpace(id)); cleaned != "" {
+				ids = append(ids, cleaned)
+			}
+		}
+		if len(ids) > 0 {
+			body["videoIds"] = ids
+		}
+	}
+
+	var resp struct {
+		writeResponse
+		PlaylistID string `json:"playlistId"`
+	}
+	if err := c.doInnerTube(ctx, "playlist/create", GetContextWebRemix(c.hl), body, true, &resp); err != nil {
+		return "", err
+	}
+	if err := resp.checkStatus(); err != nil {
+		return "", err
+	}
+	if resp.PlaylistID == "" {
+		return "", fmt.Errorf("%w: missing playlistId", ErrEditRejected)
+	}
+	return resp.PlaylistID, nil
+}
+
 /*
-CreateAccountPlaylist creates a new empty playlist.
+CreateAccountPlaylist creates a new empty private playlist.
 
     params:
           ctx: execution context
@@ -127,24 +208,13 @@ CreateAccountPlaylist creates a new empty playlist.
           description: playlist description
     returns:
           string: the created playlist ID
-          error: network error
+          error: network or rejection error
 */
 func (c *Client) CreateAccountPlaylist(ctx context.Context, title, description string) (string, error) {
-	if err := requireAuth(c.auth); err != nil {
-		return "", err
-	}
-
-	var resp struct {
-		PlaylistID string `json:"playlistId"`
-	}
-	err := c.doInnerTube(ctx, "playlist/create", GetContextWebRemix(c.hl), map[string]any{
-		"title":       title,
-		"description": description,
-	}, true, &resp)
-	if err != nil {
-		return "", err
-	}
-	return resp.PlaylistID, nil
+	return c.CreatePlaylist(ctx, CreatePlaylistOptions{
+		Title:       title,
+		Description: description,
+	})
 }
 
 /*
@@ -154,17 +224,33 @@ DeleteAccountPlaylist deletes the user-owned playlist with the given ID.
           ctx: execution context
           playlistID: playlist identifier
     returns:
-          error: network error
+          error: network or rejection error
 */
 func (c *Client) DeleteAccountPlaylist(ctx context.Context, playlistID string) error {
 	if err := requireAuth(c.auth); err != nil {
 		return err
 	}
 
-	var resp struct{}
-	return c.doInnerTube(ctx, "playlist/delete", GetContextWebRemix(c.hl), map[string]any{
+	var resp writeResponse
+	if err := c.doInnerTube(ctx, "playlist/delete", GetContextWebRemix(c.hl), map[string]any{
 		"playlistId": formatYoutubePlaylistID(playlistID),
+	}, true, &resp); err != nil {
+		return err
+	}
+	return resp.checkStatus()
+}
+
+func (c *Client) editPlaylistRaw(ctx context.Context, playlistID string, actions []PlaylistEditAction) (writeResponse, error) {
+	if err := requireAuth(c.auth); err != nil {
+		return writeResponse{}, err
+	}
+
+	var resp writeResponse
+	err := c.doInnerTube(ctx, "browse/edit_playlist", GetContextWebRemix(c.hl), map[string]any{
+		"playlistId": formatYoutubePlaylistID(playlistID),
+		"actions":    actions,
 	}, true, &resp)
+	return resp, err
 }
 
 /*
@@ -175,40 +261,72 @@ EditPlaylist applies raw commands to mutate playlist settings or elements.
           playlistID: playlist identifier
           actions: list of edit action commands
     returns:
-          error: network error
+          error: network or rejection error
 */
 func (c *Client) EditPlaylist(ctx context.Context, playlistID string, actions []PlaylistEditAction) error {
+	resp, err := c.editPlaylistRaw(ctx, playlistID, actions)
+	if err != nil {
+		return err
+	}
+	return resp.checkStatus()
+}
+
+// AddSongsToPlaylistOpts adds the specified track IDs to a playlist with the
+// chosen duplicate-handling mode.
+func (c *Client) AddSongsToPlaylistOpts(ctx context.Context, playlistID string, videoIDs []string, mode DedupeMode) error {
 	if err := requireAuth(c.auth); err != nil {
 		return err
 	}
+	var option string
+	switch mode {
+	case DedupeAsk:
+		option = "DEDUPE_OPTION_CHECK"
+	case DedupeDrop:
+		option = "DEDUPE_OPTION_DROP_DUPLICATE"
+	case DedupeAdd:
+		option = "DEDUPE_OPTION_SKIP"
+	default:
+		return fmt.Errorf("ytm: unknown dedupe mode %d", mode)
+	}
 
-	var resp struct{}
-	return c.doInnerTube(ctx, "browse/edit_playlist", GetContextWebRemix(c.hl), map[string]any{
-		"playlistId": formatYoutubePlaylistID(playlistID),
-		"actions":    actions,
-	}, true, &resp)
+	var actions []PlaylistEditAction
+	for _, vid := range videoIDs {
+		if cleaned := CleanSongID(strings.TrimSpace(vid)); cleaned != "" {
+			actions = append(actions, PlaylistEditAction{
+				Action:       PlaylistEditActionAddVideo,
+				AddedVideoID: cleaned,
+				DedupeOption: option,
+			})
+		}
+	}
+	if len(actions) == 0 {
+		return nil
+	}
+
+	resp, err := c.editPlaylistRaw(ctx, playlistID, actions)
+	if err != nil {
+		return err
+	}
+	if mode == DedupeAsk && resp.asksAboutDuplicates() {
+		return ErrDuplicates
+	}
+	return resp.checkStatus()
 }
 
 /*
-AddSongsToPlaylist adds the specified track IDs to a playlist.
+AddSongsToPlaylist adds the specified track IDs to a playlist without duplicate
+checking (DedupeAdd), so tracks already in the playlist can be added again. Prefer
+AddSongsToPlaylistOpts when duplicate handling matters.
 
     params:
           ctx: execution context
           playlistID: target playlist identifier
           videoIDs: tracks to add
     returns:
-          error: network error
+          error: network or rejection error
 */
 func (c *Client) AddSongsToPlaylist(ctx context.Context, playlistID string, videoIDs []string) error {
-	var actions []PlaylistEditAction
-	for _, vid := range videoIDs {
-		actions = append(actions, PlaylistEditAction{
-			Action:       PlaylistEditActionAddVideo,
-			AddedVideoID: vid,
-			DedupeOption: "DEDUPE_OPTION_SKIP",
-		})
-	}
-	return c.EditPlaylist(ctx, playlistID, actions)
+	return c.AddSongsToPlaylistOpts(ctx, playlistID, videoIDs, DedupeAdd)
 }
 
 /*

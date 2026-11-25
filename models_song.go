@@ -151,6 +151,30 @@ func (p Playlist) GetThumbnailProvider() *ThumbnailProvider {
 	return p.Thumbnail
 }
 
+// Owned reports whether the playlist belongs to channelID.
+func (p Playlist) Owned(channelID string) bool {
+	return channelID != "" && p.OwnerID != "" && p.OwnerID == channelID
+}
+
+// IsEditablePlaylistID reports whether id refers to a user-editable playlist
+// rather than Liked Music, albums, mixes, or podcasts.
+func IsEditablePlaylistID(id string) bool {
+	id = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(id), "VL"))
+	if id == "" {
+		return false
+	}
+	switch id {
+	case "LM", "SE", "liked", "downloaded":
+		return false
+	}
+	for _, prefix := range []string{"VL", "MPRE", "OLAK", "RD", "FE", "MPSP", "LP", "LM:"} {
+		if strings.HasPrefix(id, prefix) {
+			return false
+		}
+	}
+	return true
+}
+
 // ContinuationType categorizes standard continuation actions.
 type ContinuationType string
 
