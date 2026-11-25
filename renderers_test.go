@@ -55,3 +55,34 @@ func TestYoutubeiShelfArtistSkipsNilNavigationEndpoint(t *testing.T) {
 		t.Fatalf("got %+v, want ID=UC1234 Name=Avenged Sevenfold", got)
 	}
 }
+
+func TestMusicTwoRowItemRendererParsesAlbumYear(t *testing.T) {
+	item := &MusicTwoRowItemRenderer{
+		Title: TextRuns{Runs: []TextRun{{Text: "Under Mentality"}}},
+		Subtitle: &TextRuns{
+			Runs: []TextRun{
+				{Text: "Album"},
+				{Text: " • "},
+				{Text: "2023"},
+			},
+		},
+		NavigationEndpoint: NavigationEndpoint{
+			BrowseEndpoint: &BrowseEndpoint{
+				BrowseID: "MPREb_test",
+				BrowseEndpointContextSupportedConfigs: &BrowseEndpointContextSupportedConfigs{
+					BrowseEndpointContextMusicConfig: BrowseEndpointContextMusicConfig{
+						PageType: "MUSIC_PAGE_TYPE_ALBUM",
+					},
+				},
+			},
+		},
+	}
+
+	got, ok := item.toMediaItem().(*Playlist)
+	if !ok || got == nil {
+		t.Fatalf("expected *Playlist, got %T", item.toMediaItem())
+	}
+	if got.Year != 2023 {
+		t.Fatalf("Year = %d, want 2023", got.Year)
+	}
+}

@@ -523,8 +523,26 @@ type MusicTwoRowItemRenderer struct {
 	SubtitleBadges     []Badge            `json:"subtitleBadges,omitempty"`
 }
 
+func parseYearRun(s string) int {
+	s = strings.TrimSpace(s)
+	if len(s) != 4 {
+		return 0
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return 0
+		}
+	}
+	y, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
+	}
+	return y
+}
+
 func (r *MusicTwoRowItemRenderer) toMediaItem() MediaItem {
 	var artists []Artist
+	var year int
 	if r.Subtitle != nil {
 		for _, run := range r.Subtitle.Runs {
 			if run.NavigationEndpoint != nil && run.NavigationEndpoint.BrowseEndpoint != nil {
@@ -535,6 +553,8 @@ func (r *MusicTwoRowItemRenderer) toMediaItem() MediaItem {
 						Name: run.Text,
 					})
 				}
+			} else if year == 0 && run.NavigationEndpoint == nil {
+				year = parseYearRun(run.Text)
 			}
 		}
 	}
@@ -632,6 +652,7 @@ func (r *MusicTwoRowItemRenderer) toMediaItem() MediaItem {
 				Artists:   artists,
 				Name:      titleText,
 				Thumbnail: thumbnailProvider,
+				Year:      year,
 			}
 		case "SONG":
 			return &Song{
