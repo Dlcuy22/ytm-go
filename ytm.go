@@ -20,9 +20,11 @@
 package ytm
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -46,6 +48,18 @@ var (
 	// server answers 200 with a signed-out page, so this error is raised by
 	// inspecting the response body, not the status code.
 	ErrSessionExpired = errors.New("session expired")
+
+	// ErrDuplicates means an add-to-playlist request with DedupeAsk was refused
+	// because one or more tracks are already in the playlist.
+	ErrDuplicates = errors.New("ytm: playlist already has some of these songs")
+
+	// ErrEditRejected means InnerTube answered HTTP 200 for a write operation,
+	// but the JSON status field did not report SUCCEEDED.
+	ErrEditRejected = errors.New("ytm: YouTube Music rejected the change")
+
+	// ErrRateLimited means repeated HTTP 403 refusals on signed-in requests
+	// triggered exponential backoff.
+	ErrRateLimited = errors.New("ytm: rate limited")
 
 	// packageLogger is the fallback for the parse helpers that have no client to
 	// read a logger from. It is nil until SetLogger is called.
@@ -73,6 +87,45 @@ type Client struct {
 	// session. It is only meaningful for endpoints that echo the viewer state,
 	// and it stays unknown until such a response arrives.
 	lastAuthState authState
+
+	writeMu     sync.Mutex
+	lastWriteAt time.Time
+	writeMinGap time.Duration
+
+	backoffMu   sync.Mutex
+	refusals    int
+	pausedUntil time.Time
+
+	nowFn   func() time.Time
+	sleepFn func(context.Context, time.Duration) error
+}
+
+func (c *Client) now() time.Time {
+	if c != nil && c.nowFn != nil {
+		return c.nowFn()
+	}
+	return time.Now()
+}
+
+func (c *Client) sleep(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	if c != nil && c.sleepFn != nil {
+		return c.sleepFn(ctx, d)
+	}
+	return sleepContext(ctx, d)
+}
+
+func sleepContext(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // SetLogger installs a logger for this client. A nil logger is ignored, so a
@@ -128,6 +181,7 @@ func NewClientWithHTTP(httpClient *http.Client) *Client {
 		nonMusicURL: DefaultNonMusicAPIURL,
 		hl:          DefaultHL,
 		cache:       NewItemCache(),
+		writeMinGap: writeMinGapDefault,
 	}
 	return c
 }

@@ -15,6 +15,8 @@
 //   - fmt
 //   - io
 //   - net/http
+//   - strings
+//   - time
 //
 // Error Types:
 //   - InnerTubeError: returned on HTTP status failure or backend response failure
@@ -28,6 +30,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
+	"time"
+)
+
+const (
+	writeMinGapDefault = 500 * time.Millisecond
+	refusalRetryDelay  = 250 * time.Millisecond
+	refusalPauseRun    = 6
+	refusalPauseBase   = 5 * time.Second
+	refusalPauseMaxPow = 3 // 5s << 3 = 40s
 )
 
 // APIError represents the structured error response from InnerTube API.
@@ -49,6 +61,81 @@ func (e *InnerTubeError) Error() string {
 		return fmt.Sprintf("InnerTube error (HTTP %d, Code %d): %s - %s", e.ResponseCode, e.Parsed.Code, e.Parsed.Status, e.Parsed.Message)
 	}
 	return fmt.Sprintf("InnerTube error (HTTP %d): %s", e.ResponseCode, e.Body)
+}
+
+// writeResponse captures the common status and actions fields returned by
+// InnerTube mutation endpoints.
+type writeResponse struct {
+	Status  string            `json:"status"`
+	Actions []json.RawMessage `json:"actions,omitempty"`
+}
+
+func (r writeResponse) checkStatus() error {
+	if r.Status != "" && !strings.Contains(r.Status, "SUCCEEDED") {
+		return fmt.Errorf("%w: %s", ErrEditRejected, r.Status)
+	}
+	return nil
+}
+
+func (r writeResponse) asksAboutDuplicates() bool {
+	if r.Status == "" || strings.Contains(r.Status, "SUCCEEDED") {
+		return false
+	}
+	for _, act := range r.Actions {
+		if bytes.Contains(act, []byte("DEDUPE_OPTION_SKIP")) {
+			return true
+		}
+	}
+	return false
+}
+
+func isWritePath(path string) bool {
+	return strings.HasPrefix(path, "like/") ||
+		path == "playlist/create" ||
+		path == "playlist/delete" ||
+		path == "browse/edit_playlist" ||
+		path == "feedback" ||
+		strings.HasPrefix(path, "subscription/")
+}
+
+func (c *Client) waitIfPaused(ctx context.Context) error {
+	for {
+		c.backoffMu.Lock()
+		until := c.pausedUntil
+		c.backoffMu.Unlock()
+		wait := until.Sub(c.now())
+		if wait <= 0 {
+			return nil
+		}
+		if err := c.sleep(ctx, wait); err != nil {
+			return err
+		}
+	}
+}
+
+func (c *Client) recordRefusal() int {
+	c.backoffMu.Lock()
+	defer c.backoffMu.Unlock()
+	c.refusals++
+	n := c.refusals
+	if n >= refusalPauseRun {
+		shift := n - refusalPauseRun
+		if shift > refusalPauseMaxPow {
+			shift = refusalPauseMaxPow
+		}
+		until := c.now().Add(refusalPauseBase << shift)
+		if until.After(c.pausedUntil) {
+			c.pausedUntil = until
+		}
+	}
+	return n
+}
+
+func (c *Client) resetRefusals() {
+	c.backoffMu.Lock()
+	c.refusals = 0
+	c.pausedUntil = time.Time{}
+	c.backoffMu.Unlock()
 }
 
 /*
@@ -107,16 +194,80 @@ func (c *Client) doInnerTube(ctx context.Context, path string, clientCtx ClientC
 		}
 	}
 
+	if authed {
+		if err := c.waitIfPaused(ctx); err != nil {
+			return err
+		}
+		if isWritePath(path) {
+			c.writeMu.Lock()
+			if !c.lastWriteAt.IsZero() && c.writeMinGap > 0 {
+				if wait := c.writeMinGap - c.now().Sub(c.lastWriteAt); wait > 0 {
+					if err := c.sleep(ctx, wait); err != nil {
+						c.writeMu.Unlock()
+						return err
+					}
+				}
+			}
+			defer func() {
+				c.lastWriteAt = c.now()
+				c.writeMu.Unlock()
+			}()
+		}
+	}
+
+	const maxAttempts = 2
+	var bodyBytes []byte
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		var err error
+		bodyBytes, err = c.sendInnerTubeOnce(ctx, url, clientCtx, reqBodyBytes, authed)
+		if err == nil {
+			if authed {
+				c.resetRefusals()
+			}
+			break
+		}
+		if !authed {
+			return err
+		}
+		itErr, ok := err.(*InnerTubeError)
+		if !ok || itErr.ResponseCode != http.StatusForbidden {
+			return err
+		}
+		refusals := c.recordRefusal()
+		if attempt == maxAttempts-1 {
+			if refusals >= refusalPauseRun {
+				return fmt.Errorf("%w: %w", ErrRateLimited, err)
+			}
+			return err
+		}
+		if sleepErr := c.sleep(ctx, refusalRetryDelay); sleepErr != nil {
+			return sleepErr
+		}
+	}
+
+	// The viewer state is only in the body, so it is recorded here, while the raw
+	// bytes are still available.
+	if state := classifyAuthState(bodyBytes); state != authStateUnknown {
+		c.lastAuthState = state
+		if obs, ok := respBody.(authObserver); ok {
+			obs.setAuthState(state)
+		}
+	}
+
+	return json.Unmarshal(bodyBytes, respBody)
+}
+
+func (c *Client) sendInnerTubeOnce(ctx context.Context, url string, clientCtx ClientContext, reqBodyBytes []byte, authed bool) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(reqBodyBytes))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	c.setHeaders(req, clientCtx, authed)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
@@ -133,26 +284,12 @@ func (c *Client) doInnerTube(ctx context.Context, path string, clientCtx ClientC
 			Parsed:       apiErr.Error,
 		}
 		if resp.StatusCode == http.StatusUnauthorized {
-			return fmt.Errorf("%w: %w", ErrSessionExpired, err)
+			return nil, fmt.Errorf("%w: %w", ErrSessionExpired, err)
 		}
-		return err
+		return nil, err
 	}
 
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	// The viewer state is only in the body, so it is recorded here, while the raw
-	// bytes are still available.
-	if state := classifyAuthState(bodyBytes); state != authStateUnknown {
-		c.lastAuthState = state
-		if obs, ok := respBody.(authObserver); ok {
-			obs.setAuthState(state)
-		}
-	}
-
-	return json.Unmarshal(bodyBytes, respBody)
+	return io.ReadAll(resp.Body)
 }
 
 /*
