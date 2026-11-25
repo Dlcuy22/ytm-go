@@ -1,0 +1,94 @@
+{
+  "contents": [
+    {
+      "addToPlaylistRenderer": {
+        "title": {
+          "runs": [
+            {
+              "text": "Save to playlist"
+            }
+          ]
+        },
+        "playlists": [
+          {
+            "playlistAddToOptionRenderer": {
+              "playlistId": "LM",
+              "title": {
+                "runs": [
+                  {
+                    "text": "Liked music"
+                  }
+                ]
+              },
+              "shortBylineText": {
+                "simpleText": "14 songs"
+              },
+              "thumbnailRenderer": {
+                "musicThumbnailRenderer": {
+                  "thumbnail": {
+                    "thumbnails": [
+                      {
+                        "url": "https://example.invalid/thumb/lm-192.png"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "playlistAddToOptionRenderer": {
+              "playlistId": "PLtestPlaylist01",
+              "title": {
+                "runs": [
+                  {
+                    "text": "Road Trip Mix"
+                  }
+                ]
+              },
+              "shortBylineText": {
+                "runs": [
+                  {
+                    "text": "9"
+                  },
+                  {
+                    "text": " tracks"
+                  }
+                ]
+              },
+              "thumbnailRenderer": {
+                "musicThumbnailRenderer": {
+                  "thumbnail": {
+                    "thumbnails": [
+                      {
+                        "url": "https://example.invalid/thumb/pl1-44.jpg",
+                        "width": 44,
+                        "height": 44
+                      },
+                      {
+                        "url": "https://example.invalid/thumb/pl1-88.jpg",
+                        "width": 88,
+                        "height": 88
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "playlistAddToOptionRenderer": {
+              "playlistId": "PLtestPlaylist02",
+              "title": {
+                "simpleText": "Late Night"
+              },
+              "shortBylineText": {
+                "simpleText": "3 tracks"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

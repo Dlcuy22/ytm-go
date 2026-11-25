@@ -229,6 +229,29 @@ func TestLibraryRoundTripLive(t *testing.T) {
 	}
 }
 
+// TestGetAddToPlaylistTargetsLive verifies /playlist/get_add_to_playlist against
+// a real signed-in session. Skipped unless YTM_LIVE=1.
+func TestGetAddToPlaylistTargetsLive(t *testing.T) {
+	if os.Getenv("YTM_LIVE") == "" {
+		t.Skip("set YTM_LIVE=1 to run live checks")
+	}
+	songID := os.Getenv("YTM_SONG")
+	if songID == "" {
+		songID = "dQw4w9WgXcQ"
+	}
+	client, _ := liveClient(t)
+	targets, err := client.GetAddToPlaylistTargets(context.Background(), songID)
+	if err != nil {
+		t.Fatalf("GetAddToPlaylistTargets: %v", err)
+	}
+	if len(targets) == 0 {
+		t.Fatal("expected at least Liked Music target")
+	}
+	for _, tgt := range targets {
+		t.Logf("target id=%s title=%q subtitle=%q", tgt.PlaylistID, tgt.Title, tgt.Subtitle)
+	}
+}
+
 // songInLibrary reports whether a track is currently saved, by reading the
 // library toggle from /next. It is a test helper rather than public API because
 // SetSongInLibrary already makes the common case a single call.
