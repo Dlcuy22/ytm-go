@@ -206,3 +206,12 @@ Menandakan apakah respons terakhir dibuat untuk penonton yang sudah login.
 Sesi mati **bukan** error HTTP: server menjawab 200 dengan halaman signed-out.
 Karena itu reader ber-auth mengembalikan `ErrSessionExpired` dan bukan slice
 kosong, supaya sesi rusak terlihat dan tidak tampak seperti pustaka kosong.
+
+### Mutasi Playlist & Kepemilikan
+
+- **`client.SetPlaylistSaved(ctx, playlistID, saved)`**: menyimpan atau menghapus playlist pihak lain (termasuk ID album `OLAK…`) dari pustaka akun.
+- **`client.CreatePlaylist(ctx, opts)`**: membuat playlist dengan `CreatePlaylistOptions` (`Title`, `Description`, `Privacy`: `PlaylistPrivate` bawaan / `PlaylistUnlisted` / `PlaylistPublic`, serta `VideoIDs` awal opsional). Tanda kurung sudut (`<`, `>`) dihapus dari judul.
+- **`client.AddSongsToPlaylistOpts(ctx, playlistID, videoIDs, mode)`**: menambah lagu dengan `DedupeAsk` (mengembalikan `ErrDuplicates` jika sudah ada), `DedupeDrop` (lewati duplikat), atau `DedupeAdd` (tambah langsung tanpa cek, sama seperti `AddSongsToPlaylist`).
+- **`client.GetAddToPlaylistTargets(ctx, videoID)`**: mengambil `[]AddToPlaylistTarget` (`PlaylistID`, `Title`, `Subtitle`, `Thumbnail`) dari `/playlist/get_add_to_playlist`.
+- **`Playlist.Owned(channelID)` & `IsEditablePlaylistID(id)`**: memeriksa kepemilikan dan menyaring ID bawaan/non-editable (`LM`, `OLAK…`, `RD…`, `MPRE…`, `SE`, `MPSP…`).
+- **Pembatasan tulis & error status**: write ber-auth diberi jeda minimum 500 ms, penolakan HTTP 403 berulang memicu backoff dan mengembalikan `ErrRateLimited`, serta respons tulis tanpa `SUCCEEDED` mengembalikan `ErrEditRejected`.

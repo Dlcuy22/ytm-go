@@ -226,3 +226,12 @@ Reports whether the most recent response was produced for a signed-in viewer.
 A dead session is **not** an HTTP error: the server answers 200 with a signed-out
 page. The authed readers therefore return `ErrSessionExpired` rather than an empty
 slice, so a broken session is visible instead of looking like an empty library.
+
+### Playlist Mutations & Ownership
+
+- **`client.SetPlaylistSaved(ctx, playlistID, saved)`**: saves or removes a foreign playlist (including album `OLAK…` IDs) in the signed-in account's library.
+- **`client.CreatePlaylist(ctx, opts)`**: creates a playlist with `CreatePlaylistOptions` (`Title`, `Description`, `Privacy`: `PlaylistPrivate` default / `PlaylistUnlisted` / `PlaylistPublic`, and optional initial `VideoIDs`). Angle brackets (`<`, `>`) are stripped from titles.
+- **`client.AddSongsToPlaylistOpts(ctx, playlistID, videoIDs, mode)`**: adds tracks with `DedupeAsk` (returns `ErrDuplicates` if already present), `DedupeDrop` (skips duplicates), or `DedupeAdd` (appends unconditionally, same as `AddSongsToPlaylist`).
+- **`client.GetAddToPlaylistTargets(ctx, videoID)`**: fetches `[]AddToPlaylistTarget` (`PlaylistID`, `Title`, `Subtitle`, `Thumbnail`) from `/playlist/get_add_to_playlist`.
+- **`Playlist.Owned(channelID)` & `IsEditablePlaylistID(id)`**: checks ownership and filters out built-in/non-editable IDs (`LM`, `OLAK…`, `RD…`, `MPRE…`, `SE`, `MPSP…`).
+- **Write protection & status errors**: signed-in writes are paced (500 ms minimum gap), repeated HTTP 403 refusals back off and return `ErrRateLimited`, and non-`SUCCEEDED` write responses return `ErrEditRejected`.
